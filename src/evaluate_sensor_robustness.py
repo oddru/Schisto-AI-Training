@@ -14,11 +14,21 @@ def load_dataset(path: str) -> pd.DataFrame:
 
 def train_model(df: pd.DataFrame):
     features = [
-        "flow_rate",
+        "fwl_cm",
+        "psi_kpa_15cm",
+        "water_level",
+        "soil_moisture_top",
+        "soil_moisture_mid",
+        "soil_moisture_deep",
+        "groundwater_depth",
         "water_temp_c",
         "turbidity_ntu",
         "rain_mm",
-        "conductivity_us",
+        "flow_rate",
+        "ec_us",
+        "ndvi",
+        "et_mm",
+        "crop_stage",
     ]
     target = "gate_open"
     X = df[features]
@@ -40,25 +50,33 @@ def train_model(df: pd.DataFrame):
 
 def add_gaussian_noise(df: pd.DataFrame, severity: float = 0.05) -> pd.DataFrame:
     noisy = df.copy()
-    for col in ["flow_rate", "water_temp_c", "turbidity_ntu", "rain_mm", "conductivity_us"]:
-        noisy[col] = noisy[col] + np.random.normal(0, severity * noisy[col].std(), len(noisy))
+    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm", "crop_stage"]:
+        # for categorical/ordinal (crop_stage) add integer noise; for others add gaussian
+        if col == "crop_stage":
+            noisy[col] = (noisy[col] + np.random.randint(-1, 2, size=len(noisy))).clip(0, 3)
+        else:
+            noisy[col] = noisy[col] + np.random.normal(0, severity * noisy[col].std(), len(noisy))
     return noisy
 
 
 def add_impulsive_noise(df: pd.DataFrame, severity: float = 0.15, p: float = 0.02) -> pd.DataFrame:
     noisy = df.copy()
     idx = np.random.rand(len(noisy)) < p
-    for col in ["flow_rate", "water_temp_c", "turbidity_ntu", "rain_mm", "conductivity_us"]:
+    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm"]:
         noise_mag = np.random.choice([-1.0, 1.0], size=idx.sum()) * severity * noisy[col].std()
         noisy.loc[idx, col] = noisy.loc[idx, col] + noise_mag
+    # impulsive on crop_stage as occasional misread
+    idx2 = np.random.rand(len(noisy)) < p/10
+    noisy.loc[idx2, "crop_stage"] = np.random.randint(0, 4, size=idx2.sum())
     return noisy
 
 
 def add_sensor_drift(df: pd.DataFrame, drift_rate: float = 0.01) -> pd.DataFrame:
     noisy = df.copy()
-    for col in ["flow_rate", "water_temp_c", "turbidity_ntu", "rain_mm", "conductivity_us"]:
+    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm"]:
         drift = np.arange(len(noisy)) * drift_rate * noisy[col].std() / max(len(noisy), 1)
         noisy[col] = noisy[col] + drift
+    noisy["crop_stage"] = (noisy["crop_stage"] + np.linspace(0, drift_rate*3, len(noisy))).astype(int).clip(0,3)
     return noisy
 
 
@@ -67,7 +85,7 @@ def add_sensor_freeze(df: pd.DataFrame, freeze_window: int = 150) -> pd.DataFram
     n_rows = len(noisy)
     start = np.random.randint(0, max(1, n_rows - freeze_window))
     end = min(n_rows, start + freeze_window)
-    for col in ["flow_rate", "water_temp_c", "turbidity_ntu", "rain_mm", "conductivity_us"]:
+    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm", "crop_stage"]:
         frozen_value = noisy.loc[start, col]
         noisy.loc[start:end, col] = frozen_value
     return noisy
@@ -77,11 +95,19 @@ def evaluate_noise_case(df: pd.DataFrame, noise_name: str, noise_fn, **kwargs):
     noisy = noise_fn(df, **kwargs)
     model = LogisticRegression(max_iter=4000)
     features = [
-        "flow_rate",
+        "water_level",
+        "soil_moisture_top",
+        "soil_moisture_mid",
+        "soil_moisture_deep",
+        "groundwater_depth",
         "water_temp_c",
         "turbidity_ntu",
         "rain_mm",
-        "conductivity_us",
+        "flow_rate",
+        "ec_us",
+        "ndvi",
+        "et_mm",
+        "crop_stage",
     ]
     target = "gate_open"
 

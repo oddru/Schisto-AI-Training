@@ -10,11 +10,21 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 
 FEATURES = [
-    "flow_rate",
+    "fwl_cm",
+    "psi_kpa_15cm",
+    "water_level",
+    "soil_moisture_top",
+    "soil_moisture_mid",
+    "soil_moisture_deep",
+    "groundwater_depth",
     "water_temp_c",
     "turbidity_ntu",
     "rain_mm",
-    "conductivity_us",
+    "flow_rate",
+    "ec_us",
+    "ndvi",
+    "et_mm",
+    "crop_stage",
 ]
 TARGET = "gate_open"
 

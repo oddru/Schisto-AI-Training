@@ -35,11 +35,11 @@ Classify a new sample:
 ```bash
 python src/predict_gate_decision.py \
   --model-path models/gate_model_random_forest.joblib \
-  --flow-rate 0.08 \
-  --water-temp-c 28.5 \
-  --turbidity-ntu 45 \
-  --rain-mm 9 \
-  --conductivity-us 240
+  --water-level 0.08 \
+    --soil-moisture 0.28 \
+    --water-temp-c 28.5 \
+    --turbidity-ntu 45 \
+    --rain-mm 9
 ```
 
 Evaluate robustness:
