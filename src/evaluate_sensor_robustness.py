@@ -1,11 +1,18 @@
-import argparse
-from pathlib import Path
+﻿import argparse
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
+
+FEATURES = [
+    "water_level",
+    "soil_moisture",
+    "temperature",
+    "water_velocity",
+]
+TARGET = "gate_decision"
 
 
 def load_dataset(path: str) -> pd.DataFrame:
@@ -13,70 +20,46 @@ def load_dataset(path: str) -> pd.DataFrame:
 
 
 def train_model(df: pd.DataFrame):
-    features = [
-        "fwl_cm",
-        "psi_kpa_15cm",
-        "water_level",
-        "soil_moisture_top",
-        "soil_moisture_mid",
-        "soil_moisture_deep",
-        "groundwater_depth",
-        "water_temp_c",
-        "turbidity_ntu",
-        "rain_mm",
-        "flow_rate",
-        "ec_us",
-        "ndvi",
-        "et_mm",
-        "crop_stage",
-    ]
-    target = "gate_open"
-    X = df[features]
-    y = df[target]
-
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=7, stratify=y
+        df[FEATURES],
+        df[TARGET],
+        test_size=0.2,
+        random_state=42,
+        stratify=df[TARGET],
     )
-    model = LogisticRegression(max_iter=4000)
+
+    model = RandomForestClassifier(n_estimators=400, random_state=42, class_weight="balanced")
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
 
     print("Clean evaluation:")
     print("Accuracy:", accuracy_score(y_test, preds))
-    print("F1:", f1_score(y_test, preds))
+    print("F1:", f1_score(y_test, preds, zero_division=0))
     print(classification_report(y_test, preds, zero_division=0))
     return model
 
 
 def add_gaussian_noise(df: pd.DataFrame, severity: float = 0.05) -> pd.DataFrame:
     noisy = df.copy()
-    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm", "crop_stage"]:
-        # for categorical/ordinal (crop_stage) add integer noise; for others add gaussian
-        if col == "crop_stage":
-            noisy[col] = (noisy[col] + np.random.randint(-1, 2, size=len(noisy))).clip(0, 3)
-        else:
-            noisy[col] = noisy[col] + np.random.normal(0, severity * noisy[col].std(), len(noisy))
+    for col in FEATURES:
+        noisy[col] = noisy[col] + np.random.normal(0, severity * noisy[col].std(), len(noisy))
     return noisy
 
 
 def add_impulsive_noise(df: pd.DataFrame, severity: float = 0.15, p: float = 0.02) -> pd.DataFrame:
     noisy = df.copy()
     idx = np.random.rand(len(noisy)) < p
-    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm"]:
+    for col in FEATURES:
         noise_mag = np.random.choice([-1.0, 1.0], size=idx.sum()) * severity * noisy[col].std()
         noisy.loc[idx, col] = noisy.loc[idx, col] + noise_mag
-    # impulsive on crop_stage as occasional misread
-    idx2 = np.random.rand(len(noisy)) < p/10
-    noisy.loc[idx2, "crop_stage"] = np.random.randint(0, 4, size=idx2.sum())
     return noisy
 
 
 def add_sensor_drift(df: pd.DataFrame, drift_rate: float = 0.01) -> pd.DataFrame:
     noisy = df.copy()
-    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm"]:
+    for col in FEATURES:
         drift = np.arange(len(noisy)) * drift_rate * noisy[col].std() / max(len(noisy), 1)
         noisy[col] = noisy[col] + drift
-    noisy["crop_stage"] = (noisy["crop_stage"] + np.linspace(0, drift_rate*3, len(noisy))).astype(int).clip(0,3)
     return noisy
 
 
@@ -85,7 +68,7 @@ def add_sensor_freeze(df: pd.DataFrame, freeze_window: int = 150) -> pd.DataFram
     n_rows = len(noisy)
     start = np.random.randint(0, max(1, n_rows - freeze_window))
     end = min(n_rows, start + freeze_window)
-    for col in ["water_level", "soil_moisture_top", "soil_moisture_mid", "soil_moisture_deep", "groundwater_depth", "water_temp_c", "turbidity_ntu", "rain_mm", "flow_rate", "ec_us", "ndvi", "et_mm", "crop_stage"]:
+    for col in FEATURES:
         frozen_value = noisy.loc[start, col]
         noisy.loc[start:end, col] = frozen_value
     return noisy
@@ -93,32 +76,20 @@ def add_sensor_freeze(df: pd.DataFrame, freeze_window: int = 150) -> pd.DataFram
 
 def evaluate_noise_case(df: pd.DataFrame, noise_name: str, noise_fn, **kwargs):
     noisy = noise_fn(df, **kwargs)
-    model = LogisticRegression(max_iter=4000)
-    features = [
-        "water_level",
-        "soil_moisture_top",
-        "soil_moisture_mid",
-        "soil_moisture_deep",
-        "groundwater_depth",
-        "water_temp_c",
-        "turbidity_ntu",
-        "rain_mm",
-        "flow_rate",
-        "ec_us",
-        "ndvi",
-        "et_mm",
-        "crop_stage",
-    ]
-    target = "gate_open"
+    model = RandomForestClassifier(n_estimators=400, random_state=42, class_weight="balanced")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        noisy[features], noisy[target], test_size=0.2, random_state=7, stratify=noisy[target]
+        noisy[FEATURES],
+        noisy[TARGET],
+        test_size=0.2,
+        random_state=42,
+        stratify=noisy[TARGET],
     )
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
 
     acc = accuracy_score(y_test, preds)
-    f1 = f1_score(y_test, preds)
+    f1 = f1_score(y_test, preds, zero_division=0)
     print(f"\nNoise case: {noise_name}")
     print("Accuracy:", acc)
     print("F1:", f1)
@@ -128,7 +99,7 @@ def evaluate_noise_case(df: pd.DataFrame, noise_name: str, noise_fn, **kwargs):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate the robustness of a synthetic gate-control model under four sensor-noise scenarios."
+        description="Evaluate the robustness of a gate-decision Random Forest under sensor-noise scenarios."
     )
     parser.add_argument(
         "--dataset",

@@ -1,79 +1,63 @@
-import argparse
+﻿import argparse
 import json
 from pathlib import Path
 
 import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
 FEATURES = [
-    "fwl_cm",
-    "psi_kpa_15cm",
     "water_level",
-    "soil_moisture_top",
-    "soil_moisture_mid",
-    "soil_moisture_deep",
-    "groundwater_depth",
-    "water_temp_c",
-    "turbidity_ntu",
-    "rain_mm",
-    "flow_rate",
-    "ec_us",
-    "ndvi",
-    "et_mm",
-    "crop_stage",
+    "soil_moisture",
+    "temperature",
+    "water_velocity",
 ]
-TARGET = "gate_open"
+TARGET = "gate_decision"
 
 
 def load_dataset(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def train_model(df: pd.DataFrame, model_name: str = "random_forest"):
+def train_model(df: pd.DataFrame) -> tuple[RandomForestClassifier, dict]:
     X = df[FEATURES]
     y = df[TARGET]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=7, stratify=y
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,
     )
 
-    if model_name == "logistic_regression":
-        model = LogisticRegression(max_iter=4000)
-    elif model_name == "random_forest":
-        model = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=None,
-            min_samples_leaf=2,
-            random_state=42,
-        )
-    else:
-        raise ValueError(f"Unsupported model: {model_name}")
-
+    model = RandomForestClassifier(
+        n_estimators=400,
+        random_state=42,
+        class_weight="balanced",
+    )
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
 
     metrics = {
-        "model": model_name,
+        "model": "random_forest",
         "accuracy": float(accuracy_score(y_test, preds)),
-        "f1_score": float(f1_score(y_test, preds)),
-        "classification_report": classification_report(
-            y_test, preds, output_dict=True, zero_division=0
-        ),
+        "precision": float(precision_score(y_test, preds, zero_division=0)),
+        "recall": float(recall_score(y_test, preds, zero_division=0)),
+        "f1_score": float(f1_score(y_test, preds, zero_division=0)),
     }
 
-    return model, metrics, X_train, X_test, y_train, y_test
+    return model, metrics
 
 
-def save_outputs(model, metrics: dict, output_dir: str, model_name: str):
+def save_outputs(model, metrics: dict, output_dir: str):
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    model_path = out_dir / f"gate_model_{model_name}.joblib"
-    metrics_path = out_dir / f"model_metrics_{model_name}.json"
+    model_path = out_dir / "gate_model_random_forest.joblib"
+    metrics_path = out_dir / "model_metrics_random_forest.json"
 
     joblib.dump(model, model_path)
     with open(metrics_path, "w", encoding="utf-8") as f:
@@ -85,7 +69,7 @@ def save_outputs(model, metrics: dict, output_dir: str, model_name: str):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train a supervised model on the synthetic gate-control dataset."
+        description="Train a Random Forest classifier on the synthetic gate-control dataset."
     )
     parser.add_argument(
         "--dataset",
@@ -99,21 +83,16 @@ def parse_args() -> argparse.Namespace:
         default="models",
         help="Directory where the trained model and metrics will be saved.",
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="random_forest",
-        choices=["logistic_regression", "random_forest"],
-        help="Which model to train.",
-    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     dataset = load_dataset(args.dataset)
-    model, metrics, _, _, _, _ = train_model(dataset, model_name=args.model)
-    save_outputs(model, metrics, args.output_dir, args.model)
+    model, metrics = train_model(dataset)
+    save_outputs(model, metrics, args.output_dir)
     print("Model:", metrics["model"])
     print("Accuracy:", metrics["accuracy"])
+    print("Precision:", metrics["precision"])
+    print("Recall:", metrics["recall"])
     print("F1:", metrics["f1_score"])

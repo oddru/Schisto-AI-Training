@@ -4,109 +4,49 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Gate Model Evaluation</title>
+        <title>Gate Decision Evaluation</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 32px; background: #f5f7fb; color: #1d2433; }
-            h1, h2 { color: #17324d; }
-            .metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 16px; margin: 24px 0; }
-            .metric { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-            .metric span { display: block; font-size: 12px; color: #58657a; margin-bottom: 8px; text-transform: uppercase; }
-            .metric strong { font-size: 22px; }
-            table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-            th, td { border: 1px solid #dfe7f2; padding: 10px; text-align: center; font-size: 13px; }
-            th { background: #eaf1fb; }
-            .correct { color: green; font-weight: bold; }
-            .wrong { color: #b42318; font-weight: bold; }
+            body { font-family: Arial, sans-serif; margin: 32px; background: #f5f7fb; color: #1f2937; }
+            h1, h2 { color: #0f172a; }
+            .metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; margin: 20px 0; }
+            .metric { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+            th, td { border: 1px solid #dfe3eb; padding: 8px; text-align: center; }
+            th { background: #e2e8f0; }
         </style>
     </head>
     <body>
-        <h1>Gate Model Evaluation Report</h1>
-        <p>This report evaluates the trained model on a new CSV containing no target label column. The actual label is generated from the same domain rule used to create the synthetic dataset, purely for evaluation.</p>
-        
-    <div class="metrics">
-        <div class="metric"><span>Accuracy</span><strong>1.0000</strong></div>
-        <div class="metric"><span>Precision</span><strong>1.0000</strong></div>
-        <div class="metric"><span>Recall</span><strong>1.0000</strong></div>
-        <div class="metric"><span>F1</span><strong>1.0000</strong></div>
-    </div>
-    
-        <h2>Prediction Table</h2>
+        <h1>Gate Decision Evaluation</h1>
+        <div class="metrics">
+            <div class="metric"><strong>Accuracy</strong><br>0.9000</div>
+            <div class="metric"><strong>Precision</strong><br>1.0000</div>
+            <div class="metric"><strong>Recall</strong><br>0.8333</div>
+            <div class="metric"><strong>F1</strong><br>0.9091</div>
+        </div>
+
+        <h2>Row-level predictions</h2>
         <table>
             <thead>
                 <tr>
                     <th>Row</th>
-                            <th>Water Level (m)</th>
-                            <th>Soil Moisture</th>
-                            <th>Temp (C)</th>
-                            <th>Turbidity</th>
-                            <th>Rain</th>
+                    <th>Water Level</th>
+                    <th>Soil Moisture</th>
+                    <th>Temperature</th>
+                    <th>Water Velocity</th>
                     <th>Ground Truth</th>
-                    <th>Predicted Gate</th>
-                    <th>Gate Open Prob.</th>
-                    <th>Correct?</th>
+                    <th>Predicted</th>
+                    <th>Open Probability</th>
+                    <th>Correct</th>
                 </tr>
             </thead>
             <tbody>
                 
             <tr>
                 <td>0</td>
-                <td>0.06</td>
-                <td>0.42</td>
-                <td>29.5</td>
-                <td>42.0</td>
-                <td>8.0</td>
-                <td>1</td>
-                <td>1</td>
-                <td>0.9973</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>1</td>
-                <td>0.12</td>
-                <td>0.35</td>
-                <td>27.0</td>
-                <td>55.0</td>
-                <td>11.0</td>
-                <td>1</td>
-                <td>1</td>
-                <td>0.9059</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>2</td>
-                <td>0.28</td>
-                <td>0.2</td>
-                <td>21.0</td>
-                <td>75.0</td>
-                <td>18.0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0.0022</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>3</td>
-                <td>0.33</td>
-                <td>0.18</td>
-                <td>20.0</td>
-                <td>90.0</td>
-                <td>16.0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0.0000</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>4</td>
-                <td>0.09</td>
-                <td>0.48</td>
-                <td>31.0</td>
-                <td>35.0</td>
-                <td>4.0</td>
+                <td>0.080</td>
+                <td>0.280</td>
+                <td>30.00</td>
+                <td>0.050</td>
                 <td>1</td>
                 <td>1</td>
                 <td>1.0000</td>
@@ -114,93 +54,110 @@
             </tr>
             
             <tr>
+                <td>1</td>
+                <td>0.120</td>
+                <td>0.320</td>
+                <td>28.50</td>
+                <td>0.080</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0.9950</td>
+                <td>True</td>
+            </tr>
+            
+            <tr>
+                <td>2</td>
+                <td>0.320</td>
+                <td>0.180</td>
+                <td>20.00</td>
+                <td>0.250</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0.0175</td>
+                <td>True</td>
+            </tr>
+            
+            <tr>
+                <td>3</td>
+                <td>0.400</td>
+                <td>0.140</td>
+                <td>19.50</td>
+                <td>0.350</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0.0125</td>
+                <td>True</td>
+            </tr>
+            
+            <tr>
+                <td>4</td>
+                <td>0.200</td>
+                <td>0.500</td>
+                <td>31.00</td>
+                <td>0.100</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0.9975</td>
+                <td>True</td>
+            </tr>
+            
+            <tr>
                 <td>5</td>
-                <td>0.2</td>
-                <td>0.3</td>
-                <td>25.0</td>
-                <td>68.0</td>
-                <td>13.0</td>
+                <td>0.180</td>
+                <td>0.390</td>
+                <td>25.00</td>
+                <td>0.140</td>
                 <td>0</td>
                 <td>0</td>
-                <td>0.0217</td>
+                <td>0.0075</td>
                 <td>True</td>
             </tr>
             
             <tr>
                 <td>6</td>
-                <td>0.05</td>
-                <td>0.5</td>
-                <td>30.0</td>
-                <td>28.0</td>
-                <td>3.0</td>
+                <td>0.060</td>
+                <td>0.520</td>
+                <td>30.50</td>
+                <td>0.040</td>
                 <td>1</td>
                 <td>1</td>
-                <td>0.9956</td>
+                <td>0.9950</td>
                 <td>True</td>
             </tr>
             
             <tr>
                 <td>7</td>
-                <td>0.4</td>
-                <td>0.15</td>
-                <td>19.0</td>
-                <td>100.0</td>
-                <td>24.0</td>
+                <td>0.550</td>
+                <td>0.120</td>
+                <td>18.50</td>
+                <td>0.450</td>
                 <td>0</td>
                 <td>0</td>
-                <td>0.0017</td>
+                <td>0.0025</td>
                 <td>True</td>
             </tr>
             
             <tr>
                 <td>8</td>
-                <td>0.15</td>
-                <td>0.33</td>
-                <td>26.5</td>
-                <td>50.0</td>
-                <td>12.0</td>
+                <td>0.150</td>
+                <td>0.360</td>
+                <td>26.50</td>
+                <td>0.120</td>
                 <td>1</td>
-                <td>1</td>
-                <td>0.7308</td>
-                <td>True</td>
+                <td>0</td>
+                <td>0.2625</td>
+                <td>False</td>
             </tr>
             
             <tr>
                 <td>9</td>
-                <td>0.11</td>
-                <td>0.44</td>
-                <td>28.0</td>
-                <td>46.0</td>
-                <td>7.5</td>
+                <td>0.100</td>
+                <td>0.480</td>
+                <td>29.00</td>
+                <td>0.090</td>
                 <td>1</td>
                 <td>1</td>
-                <td>0.9939</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>10</td>
-                <td>0.52</td>
-                <td>0.12</td>
-                <td>18.0</td>
-                <td>110.0</td>
-                <td>27.0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0.0050</td>
-                <td>True</td>
-            </tr>
-            
-            <tr>
-                <td>11</td>
-                <td>0.07</td>
-                <td>0.47</td>
-                <td>30.5</td>
-                <td>40.0</td>
-                <td>5.0</td>
-                <td>1</td>
-                <td>1</td>
-                <td>0.9983</td>
+                <td>0.9950</td>
                 <td>True</td>
             </tr>
             

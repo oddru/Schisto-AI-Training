@@ -1,96 +1,103 @@
-import argparse
+﻿import argparse
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+FEATURES = ["water_level", "soil_moisture", "temperature", "water_velocity"]
+TARGET = "gate_decision"
+
+WATER_LEVEL_TRIGGER_AWD = -15.0
+WATER_LEVEL_TARGET_FLOOD = 5.0
+VWC_SATURATED = 0.52
+VWC_AWD_TRIGGER = 0.30
+VWC_CRITICAL_WILTING = 0.18
+MIN_FLUSH_VELOCITY = 0.05
+
+
+def determine_gate_state(
+    water_level: float,
+    soil_moisture: float,
+    temperature: float,
+    water_velocity: float,
+    previous_gate_decision: str,
+) -> str:
+    """Deterministic AWD + schistosomiasis control state machine.
+
+    Agronomic logic:
+    - When the gate is closed, the field is kept in a dry-down phase and stays closed until the AWD trigger is reached
+      (water_level <= -15 cm or soil_moisture <= 0.30).
+    - Once triggered, the gate opens to re-flood the field and remains open until the flood ceiling is reached
+      (water_level >= 5 cm and soil_moisture >= 0.52).
+    - If the gate is already open but the field is shallow and stagnant (water_level between 0 and 3 cm and
+      water_velocity < 0.05 m/s), the controller keeps it open to flush stagnant snail habitats and avoid micro-puddle
+      breeding conditions.
+    - A critical soil moisture failure mode overrides noisy water-level readings: if the field has dropped below the
+      wilting guardrail (soil_moisture <= 0.18) while the water_level sensor falsely appears above the AWD trigger,
+      the gate must open to protect the crop.
+    """
+    previous_state = (previous_gate_decision or "").upper()
+    if previous_state not in {"OPEN", "CLOSED"}:
+        previous_state = "CLOSED"
+
+    # Sensor-fault/desiccation fallback has highest priority because crop stress mitigation outweighs a noisy water-level reading.
+    if soil_moisture <= VWC_CRITICAL_WILTING and water_level > WATER_LEVEL_TRIGGER_AWD:
+        return "OPEN"
+
+    if previous_state == "CLOSED":
+        if water_level <= WATER_LEVEL_TRIGGER_AWD or soil_moisture <= VWC_AWD_TRIGGER:
+            return "OPEN"
+        return "CLOSED"
+
+    if previous_state == "OPEN":
+        if water_level >= WATER_LEVEL_TARGET_FLOOD and soil_moisture >= VWC_SATURATED:
+            return "CLOSED"
+        if 0.0 <= water_level <= 3.0 and water_velocity < MIN_FLUSH_VELOCITY and temperature >= 25.0:
+            return "OPEN"
+        return "OPEN"
+
+    return "CLOSED"
+
 
 def compute_risk_score(df: pd.DataFrame) -> pd.Series:
-    """Domain-informed AWD irrigation score using multiple sensors.
-
-    Higher score => higher need to irrigate (gate_open = irrigate).
-
-    Components:
-    - low water_level increases score (fields allowed to dry under AWD; when low -> need to irrigate)
-    - low soil moisture at mid-depth increases score
-    - deep groundwater far from surface increases score
-    - high ET and NDVI increase crop demand
-    - crop_stage adjusts sensitivity (0: transplanting, 1: vegetative, 2: reproductive, 3: ripening)
-    """
-    # water-level: lower values mean dryer surface (we use 0.5 m reference)
-    score = np.maximum(0.35 - df["water_level"], 0.0) * 3.0
-
-    # soil moisture mid-depth is more indicative of plant available water
-    score = score + np.maximum(0.30 - df["soil_moisture_mid"], 0.0) * 4.0
-
-    # groundwater depth (meters): larger values mean deeper water table -> more irrigation need
-    score = score + np.maximum(df["groundwater_depth"] - 0.15, 0.0) * 2.5
-
-    # crop demand signals
-    score = score + np.maximum(df["et_mm"] - 3.0, 0.0) * 0.8
-    score = score + np.maximum(df["ndvi"] - 0.35, 0.0) * 2.0
-
-    # temperature and turbidity weakly affect score
-    score = score + np.maximum(df["water_temp_c"] - 24.0, 0.0) * 0.3
-    score = score + np.maximum(80.0 - df["turbidity_ntu"], 0.0) * 0.04
-
-    # crop stage multiplier: reproductive stages are more sensitive so we increase threshold effect
-    stage_mult = np.where(df.get("crop_stage", 1) == 2, 1.2, 1.0)
-    return score * stage_mult
+    """Fallback risk score retained for compatibility with the wider evaluation pipeline."""
+    score = (
+        np.maximum(0.55 - df["water_level"], 0.0) * 2.8
+        + np.maximum(0.45 - df["soil_moisture"], 0.0) * 3.6
+        + np.maximum(df["temperature"] - 26.0, 0.0) * 0.9
+        + np.maximum(0.22 - df["water_velocity"], 0.0) * 4.2
+    )
+    return score
 
 
 def generate_dataset(n_samples: int = 5000, random_seed: int = 42) -> pd.DataFrame:
-    """Create a synthetic dataset that supports Safe AWD decision logic.
-
-    Produced columns (numerical):
-    - water_level (m)
-    - soil_moisture_top, soil_moisture_mid, soil_moisture_deep (volumetric fraction 0-1)
-    - groundwater_depth (m)
-    - water_temp_c (°C)
-    - turbidity_ntu (NTU)
-    - rain_mm (mm)
-    - flow_rate (m/s) -- canal discharge
-    - ec_us (µS/cm)
-    - ndvi (0-1)
-    - et_mm (mm/day)
-    - crop_stage (int: 0=transplanting,1=vegetative,2=reproductive,3=ripening)
-
-    The AWD decision (gate_open) is derived from the generated `awd_score`.
-    """
     rng = np.random.default_rng(random_seed)
-
     df = pd.DataFrame(
         {
-            # generate a field water level (FWL) in cm: negative = below surface, positive = standing water
-            "fwl_cm": rng.uniform(-40.0, 10.0, size=n_samples),
-            "water_level": rng.uniform(0.05, 1.2, size=n_samples),
-            "soil_moisture_top": rng.uniform(0.05, 0.6, size=n_samples),
-            "soil_moisture_mid": rng.uniform(0.05, 0.55, size=n_samples),
-            "soil_moisture_deep": rng.uniform(0.05, 0.5, size=n_samples),
-            "groundwater_depth": rng.uniform(0.05, 0.6, size=n_samples),
-            "water_temp_c": rng.uniform(18.0, 34.0, size=n_samples),
-            "turbidity_ntu": rng.uniform(10.0, 120.0, size=n_samples),
-            "rain_mm": rng.uniform(0.0, 35.0, size=n_samples),
-            "flow_rate": rng.uniform(0.02, 0.7, size=n_samples),
-            "ec_us": rng.uniform(80.0, 1200.0, size=n_samples),
-            "ndvi": rng.uniform(0.05, 0.85, size=n_samples),
-            "et_mm": rng.uniform(0.5, 6.0, size=n_samples),
-            "crop_stage": rng.integers(0, 4, size=n_samples),
+            "water_level": rng.uniform(-40.0, 10.0, size=n_samples),
+            "soil_moisture": rng.uniform(0.05, 0.60, size=n_samples),
+            "temperature": rng.uniform(15.0, 35.0, size=n_samples),
+            "water_velocity": rng.uniform(0.0, 0.8, size=n_samples),
         }
     )
 
-    # synthesize a soil matric potential at 15 cm (psi in kPa) from soil_moisture_mid
-    # mapping chosen so that soil_moisture_mid ~0.30 -> psi ~ -10 kPa (IRRI threshold)
-    df["psi_kpa_15cm"] = -((0.40 - df["soil_moisture_mid"]) * 100.0).clip(-200.0, 0.0)
+    prev_state = "CLOSED"
+    gate_states = []
+    for _, row in df.iterrows():
+        state = determine_gate_state(
+            water_level=float(row["water_level"]),
+            soil_moisture=float(row["soil_moisture"]),
+            temperature=float(row["temperature"]),
+            water_velocity=float(row["water_velocity"]),
+            previous_gate_decision=prev_state,
+        )
+        gate_states.append(state)
+        prev_state = state
 
-    df["awd_score"] = compute_risk_score(df)
-
-    # IRRI Safe AWD primary rule: re-irrigate when FWL <= -15 cm or psi <= -10 kPa
-    irri_rule = (df["fwl_cm"] <= -15.0) | (df["psi_kpa_15cm"] <= -10.0)
-
-    # gate_open = irrigate when IRRI rule true OR awd_score exceeds threshold
-    df["gate_open"] = (irri_rule | (df["awd_score"] > 5.0)).astype(int)
-    return df
+    df["gate_state"] = gate_states
+    df[TARGET] = (df["gate_state"] == "OPEN").astype(int)
+    df["previous_gate_decision"] = ["CLOSED"] + gate_states[:-1]
+    return df[FEATURES + ["gate_state", TARGET, "previous_gate_decision"]]
 
 
 def save_dataset(df: pd.DataFrame, output_path: str) -> str:
@@ -102,7 +109,7 @@ def save_dataset(df: pd.DataFrame, output_path: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate a synthetic hydrological dataset with a rule-based gate-open/close ground truth."
+        description="Generate a synthetic dataset with a deterministic AWD + snail-risk gate state machine."
     )
     parser.add_argument("--n-samples", type=int, default=5000, help="Number of synthetic rows to generate.")
     parser.add_argument("--random-seed", type=int, default=42, help="Random seed for reproducibility.")
@@ -120,5 +127,5 @@ if __name__ == "__main__":
     dataset = generate_dataset(n_samples=args.n_samples, random_seed=args.random_seed)
     saved = save_dataset(dataset, args.output)
     print(f"Saved synthetic dataset to {saved}")
-    print("Positive rate:", dataset["gate_open"].mean())
+    print("Positive rate:", dataset[TARGET].mean())
     print("Columns:", list(dataset.columns))
