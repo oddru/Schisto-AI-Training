@@ -6,10 +6,10 @@ import joblib
 import pandas as pd
 
 FEATURES = [
-    "water_level",
-    "soil_moisture",
-    "temperature",
-    "water_velocity",
+    "Month", "Day_of_Week", "Hour", "Crop_Growth_Stage",
+    "Water_Table_Depth_cm", "Inundation_Duration_Days",
+    "Water_Flow_Velocity_ms", "Water_pH", "Soil_Moisture_VWC_Percent",
+    "Soil_Temperature_C", "Vegetation_Coverage_Percent", "Vegetation_Height_cm",
 ]
 
 
@@ -18,7 +18,20 @@ def load_model(model_path: str):
 
 
 def build_sample(args) -> pd.DataFrame:
-    sample = {feature: getattr(args, feature) for feature in FEATURES}
+    sample = {
+        "Month": args.month,
+        "Day_of_Week": args.day_of_week,
+        "Hour": args.hour,
+        "Crop_Growth_Stage": args.crop_growth_stage,
+        "Water_Table_Depth_cm": args.water_table_depth_cm,
+        "Inundation_Duration_Days": args.inundation_duration_days,
+        "Water_Flow_Velocity_ms": args.water_flow_velocity_ms,
+        "Water_pH": args.water_ph,
+        "Soil_Moisture_VWC_Percent": args.soil_moisture_vwc_percent,
+        "Soil_Temperature_C": args.soil_temperature_c,
+        "Vegetation_Coverage_Percent": args.vegetation_coverage_percent,
+        "Vegetation_Height_cm": args.vegetation_height_cm,
+    }
     return pd.DataFrame([sample], columns=FEATURES)
 
 
@@ -27,10 +40,18 @@ def parse_args() -> argparse.Namespace:
         description="Predict gate open/close status for a single sensor sample."
     )
     parser.add_argument("--model-path", type=str, default="models/gate_model_random_forest.joblib", help="Saved model file.")
-    parser.add_argument("--water-level", type=float, required=True, help="Water level in meters")
-    parser.add_argument("--soil-moisture", type=float, required=True, help="Soil moisture (0-1)")
-    parser.add_argument("--temperature", type=float, required=True, help="Temperature in °C")
-    parser.add_argument("--water-velocity", type=float, required=True, help="Water velocity in m/s")
+    parser.add_argument("--month", required=True)
+    parser.add_argument("--day-of-week", required=True)
+    parser.add_argument("--hour", type=int, required=True)
+    parser.add_argument("--crop-growth-stage", required=True)
+    parser.add_argument("--water-table-depth-cm", type=float, required=True)
+    parser.add_argument("--inundation-duration-days", type=float, required=True)
+    parser.add_argument("--water-flow-velocity-ms", type=float, required=True)
+    parser.add_argument("--water-ph", type=float, required=True)
+    parser.add_argument("--soil-moisture-vwc-percent", type=float, required=True)
+    parser.add_argument("--soil-temperature-c", type=float, required=True)
+    parser.add_argument("--vegetation-coverage-percent", type=float, required=True)
+    parser.add_argument("--vegetation-height-cm", type=float, required=True)
     return parser.parse_args()
 
 

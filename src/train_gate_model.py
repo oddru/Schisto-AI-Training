@@ -5,16 +5,29 @@ from pathlib import Path
 import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 FEATURES = [
-    "water_level",
-    "soil_moisture",
-    "temperature",
-    "water_velocity",
+    "Month",
+    "Day_of_Week",
+    "Hour",
+    "Crop_Growth_Stage",
+    "Water_Table_Depth_cm",
+    "Inundation_Duration_Days",
+    "Water_Flow_Velocity_ms",
+    "Water_pH",
+    "Soil_Moisture_VWC_Percent",
+    "Soil_Temperature_C",
+    "Vegetation_Coverage_Percent",
+    "Vegetation_Height_cm",
 ]
-TARGET = "gate_decision"
+TARGET = "AWD_Gate_Action"
+CATEGORICAL_FEATURES = ["Month", "Day_of_Week", "Crop_Growth_Stage"]
+NUMERIC_FEATURES = [feature for feature in FEATURES if feature not in CATEGORICAL_FEATURES]
 
 
 def load_dataset(path: str) -> pd.DataFrame:
@@ -33,10 +46,24 @@ def train_model(df: pd.DataFrame) -> tuple[RandomForestClassifier, dict]:
         stratify=y,
     )
 
-    model = RandomForestClassifier(
-        n_estimators=400,
-        random_state=42,
-        class_weight="balanced",
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("categorical", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
+            ("numeric", "passthrough", NUMERIC_FEATURES),
+        ]
+    )
+    model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            (
+                "classifier",
+                RandomForestClassifier(
+                    n_estimators=400,
+                    random_state=42,
+                    class_weight="balanced",
+                ),
+            ),
+        ]
     )
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
@@ -69,13 +96,13 @@ def save_outputs(model, metrics: dict, output_dir: str):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train a Random Forest classifier on the synthetic gate-control dataset."
+        description="Train a Random Forest classifier on the expanded Philippine rice-paddy dataset."
     )
     parser.add_argument(
         "--dataset",
         type=str,
-        default="data/synthetic_gate_dataset.csv",
-        help="Path to the labeled synthetic dataset CSV.",
+        default="data/philippines_rice_paddy_awd_dataset.csv",
+        help="Path to the expanded labeled dataset CSV.",
     )
     parser.add_argument(
         "--output-dir",

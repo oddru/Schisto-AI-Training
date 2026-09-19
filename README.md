@@ -1,97 +1,65 @@
-﻿# Schisto-AI-Training
+# Schisto-AI-Training
 
-This repository contains a synthetic gate-decision prototype for an agricultural water-management robustness study.
+This repository contains a synthetic Philippine lowland rice-paddy IoT benchmark for AWD gate control and simulated snail-habitat risk analysis.
 
-## Final schema
+## Active dataset
 
-The project uses the following columns in the labeled dataset:
+The active dataset is `data/philippines_rice_paddy_awd_dataset.csv`. It contains hourly readings with:
 
-- `water_level`
-- `soil_moisture`
-- `temperature`
-- `water_velocity`
-- `gate_state`
-- `gate_decision`
-- `previous_gate_decision`
+- temporal features: `Month`, `Day_of_Week`, `Hour`
+- crop stage: `Crop_Growth_Stage`
+- hydrology: `Water_Table_Depth_cm`, `Inundation_Duration_Days`, `Water_Flow_Velocity_ms`, `Water_pH`
+- soil: `Soil_Moisture_VWC_Percent`, `Soil_Temperature_C`
+- vegetation: `Vegetation_Coverage_Percent`, `Vegetation_Height_cm`
+- labels: `Snail_Habitat_Risk`, `AWD_Gate_Action`
 
-`gate_decision` is the binary target variable:
-- `1` = gate open
-- `0` = gate close
+`AWD_Gate_Action` is the Random Forest target:
 
-The label is created from a transparent rule-based ground truth so the project remains defensible without a real field dataset with direct gate labels.
+- `1` = gate open / reflood
+- `0` = gate closed / maintain state
 
-## Deterministic AWD + schistosomiasis gate state machine
+`Snail_Habitat_Risk` is a separate rule-derived categorical label and is not used as a model feature, avoiding target leakage.
 
-I updated the synthetic ground-truth logic in [src/generate_synthetic_gate_dataset.py](src/generate_synthetic_gate_dataset.py) to implement a deterministic state machine based on the Philippine rice production AWD protocol and schistosomiasis-risk control.
+The data and labels are synthetic. They encode the supplied AWD and habitat-risk assumptions; they are not field observations or proof of disease-transmission prevention.
 
-The new rule-based function `determine_gate_state(...)` includes the requested IRRI/PRiSM constants:
+## Dataset generation
 
-- `WATER_LEVEL_TRIGGER_AWD = -15.0 cm`
-- `WATER_LEVEL_TARGET_FLOOD = 5.0 cm`
-- `VWC_SATURATED = 0.52`
-- `VWC_AWD_TRIGGER = 0.30`
-- `VWC_CRITICAL_WILTING = 0.18`
-- `MIN_FLUSH_VELOCITY = 0.05 m/s`
-
-The logic is organized as follows:
-
-1. Dry-down control: if the previous gate state was `CLOSED`, the gate remains closed until the AWD trigger is reached (`water_level <= -15 cm` or `soil_moisture <= 0.30`).
-2. Re-flooding hysteresis: once a trigger occurs, the gate opens and stays open until the flood ceiling is restored (`water_level >= 5 cm` and `soil_moisture >= 0.52`).
-3. Snail habitat mitigation: when the gate is already open but the paddies are shallow and stagnant (`0 <= water_level <= 3 cm`, `water_velocity < 0.05 m/s`, warm conditions), the gate remains open to flush water and disrupt snail breeding micro-habitats.
-4. Soil-moisture guardrail: if the water-level sensor is noisy but soil moisture falls below the wilting threshold (`<= 0.18`), the gate is forced open to protect the crop.
-
-This creates a consistent, interpretable synthetic target that can still be used for model training or robustness analysis under noise.
-
-## Scripts
-
-- `src/generate_synthetic_gate_dataset.py`  
-  Generates a synthetic labeled dataset with the final feature schema and rule-derived target.
-
-- `src/train_gate_model.py`  
-  Trains the final Random Forest classifier and saves the trained model and metrics.
-
-- `src/predict_gate_decision.py`  
-  Classifies a single new sensor sample and returns the predicted label and probability.
-
-- `src/evaluate_sensor_robustness.py`  
-  Tests the model under Gaussian noise, impulsive noise, sensor drift, and sensor freezing.
-
-- `src/evaluate_minimal_test_csv.py`  
-  Builds a minimal unlabeled CSV, predicts each row, and generates an HTML accuracy/precision/recall/F1 report.
-
-## Generate the dataset
+`src/generate_philippines_rice_paddy_awd_dataset.py` creates a reproducible hourly stream, couples soil moisture to water depth, applies the flowering flooding override, calculates the risk labels, and validates the configured physical and logical ranges.
 
 ```bash
-python src/generate_synthetic_gate_dataset.py --output data/synthetic_gate_dataset.csv
+python src/generate_philippines_rice_paddy_awd_dataset.py --output data/philippines_rice_paddy_awd_dataset.csv
 ```
 
-## Train the model
+## Random Forest training
+
+`src/train_gate_model.py` uses one-hot encoding for categorical features and a 400-tree balanced Random Forest for `AWD_Gate_Action`.
 
 ```bash
-python src/train_gate_model.py --dataset data/synthetic_gate_dataset.csv --output-dir models
+python src/train_gate_model.py --dataset data/philippines_rice_paddy_awd_dataset.csv --output-dir models
 ```
 
-## Predict a new sample
+## Predict one new sample
 
 ```bash
-python src/predict_gate_decision.py \
-  --model-path models/gate_model_random_forest.joblib \
-  --water-level 0.14 \
-  --soil-moisture 0.31 \
-  --temperature 27.5 \
-  --water-velocity 0.09
+python src/predict_gate_decision.py --model-path models/gate_model_random_forest.joblib \
+  --month Jan --day-of-week Monday --hour 12 \
+  --crop-growth-stage Vegetative/Tillering \
+  --water-table-depth-cm -15 --inundation-duration-days 0 \
+  --water-flow-velocity-ms 0.10 --water-ph 6.8 \
+  --soil-moisture-vwc-percent 25 --soil-temperature-c 27 \
+  --vegetation-coverage-percent 35 --vegetation-height-cm 25
 ```
 
-## Evaluate model robustness
+## Sensor robustness evaluation
+
+The robustness script evaluates Gaussian, impulse, drift, and freezing corruption from 5% through 30%. Noise is applied to numeric sensor features while categorical context remains unchanged.
 
 ```bash
-python src/evaluate_sensor_robustness.py --dataset data/synthetic_gate_dataset.csv
+python src/evaluate_sensor_robustness.py --dataset data/philippines_rice_paddy_awd_dataset.csv
 ```
 
-## Evaluate a small unlabeled CSV and create an HTML report
+Results are exported to `data/sensor_robustness_results.csv`.
 
-```bash
-python src/evaluate_minimal_test_csv.py --model-path models/gate_model_random_forest.joblib
-```
+## Research limitation
 
-The generated dataset is stored in `data/synthetic_gate_dataset.csv` and the final model artifact is saved in `models/gate_model_random_forest.joblib`.
+This is a synthetic supervised-learning benchmark. It can support controlled algorithm and robustness experiments, but real deployment claims require field sensor data, observed gate actions, snail observations, and epidemiological validation.

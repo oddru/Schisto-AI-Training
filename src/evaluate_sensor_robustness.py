@@ -6,8 +6,18 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, precision_score, recall_score
 
-FEATURES = ["water_level", "soil_moisture", "temperature", "water_velocity"]
-TARGET = "gate_decision"
+FEATURES = [
+    "Month", "Day_of_Week", "Hour", "Crop_Growth_Stage",
+    "Water_Table_Depth_cm", "Inundation_Duration_Days",
+    "Water_Flow_Velocity_ms", "Water_pH", "Soil_Moisture_VWC_Percent",
+    "Soil_Temperature_C", "Vegetation_Coverage_Percent", "Vegetation_Height_cm",
+]
+NUMERIC_FEATURES = [
+    "Hour", "Water_Table_Depth_cm", "Inundation_Duration_Days",
+    "Water_Flow_Velocity_ms", "Water_pH", "Soil_Moisture_VWC_Percent",
+    "Soil_Temperature_C", "Vegetation_Coverage_Percent", "Vegetation_Height_cm",
+]
+TARGET = "AWD_Gate_Action"
 NOISE_LEVELS = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
 
 np.random.seed(42)
@@ -23,9 +33,23 @@ def load_model(model_path: str):
 
 def get_feature_bounds(df: pd.DataFrame) -> dict:
     bounds = {}
-    for feature in FEATURES:
-        if feature == "soil_moisture":
-            bounds[feature] = (0.0, 0.60)
+    for feature in NUMERIC_FEATURES:
+        if feature == "Hour":
+            bounds[feature] = (0.0, 23.0)
+        elif feature == "Water_Table_Depth_cm":
+            bounds[feature] = (-20.0, 10.0)
+        elif feature == "Water_Flow_Velocity_ms":
+            bounds[feature] = (0.0, 1.2)
+        elif feature == "Water_pH":
+            bounds[feature] = (5.0, 8.5)
+        elif feature == "Soil_Moisture_VWC_Percent":
+            bounds[feature] = (15.0, 85.0)
+        elif feature == "Soil_Temperature_C":
+            bounds[feature] = (14.0, 36.0)
+        elif feature == "Vegetation_Coverage_Percent":
+            bounds[feature] = (10.0, 95.0)
+        elif feature == "Vegetation_Height_cm":
+            bounds[feature] = (5.0, 120.0)
         else:
             bounds[feature] = (float(df[feature].min()), float(df[feature].max()))
     return bounds
@@ -33,7 +57,7 @@ def get_feature_bounds(df: pd.DataFrame) -> dict:
 
 def clip_features(df: pd.DataFrame, bounds: dict) -> pd.DataFrame:
     clipped = df.copy()
-    for feature in FEATURES:
+    for feature in NUMERIC_FEATURES:
         lower, upper = bounds[feature]
         clipped[feature] = np.clip(clipped[feature], lower, upper)
     return clipped
@@ -41,7 +65,7 @@ def clip_features(df: pd.DataFrame, bounds: dict) -> pd.DataFrame:
 
 def add_gaussian_noise(df: pd.DataFrame, noise_level: float, bounds: dict) -> pd.DataFrame:
     noisy = df.copy()
-    for feature in FEATURES:
+    for feature in NUMERIC_FEATURES:
         sigma = noise_level * noisy[feature].std(ddof=0)
         noisy[feature] = noisy[feature] + np.random.normal(0.0, sigma, len(noisy))
     return clip_features(noisy, bounds)
@@ -53,7 +77,7 @@ def add_impulse_noise(df: pd.DataFrame, noise_level: float, bounds: dict) -> pd.
     n_corrupted = max(1, int(round(n_rows * noise_level)))
     selected_rows = np.random.choice(n_rows, size=n_corrupted, replace=False)
 
-    for feature in FEATURES:
+    for feature in NUMERIC_FEATURES:
         lower, upper = bounds[feature]
         replacements = np.random.choice([lower, upper], size=n_corrupted)
         noisy.loc[selected_rows, feature] = replacements
@@ -62,7 +86,7 @@ def add_impulse_noise(df: pd.DataFrame, noise_level: float, bounds: dict) -> pd.
 
 def add_sensor_drift(df: pd.DataFrame, noise_level: float, bounds: dict) -> pd.DataFrame:
     noisy = df.copy()
-    for feature in FEATURES:
+    for feature in NUMERIC_FEATURES:
         lower, upper = bounds[feature]
         drift = noise_level * (upper - lower)
         noisy[feature] = noisy[feature] + drift
@@ -81,7 +105,7 @@ def add_sensor_freeze(df: pd.DataFrame, noise_level: float, bounds: dict) -> pd.
     for _ in range(block_count):
         start = int(np.random.randint(0, max(1, n_rows - block_size + 1)))
         end = min(n_rows, start + block_size)
-        for feature in FEATURES:
+        for feature in NUMERIC_FEATURES:
             frozen_value = noisy.loc[start, feature]
             if start == 0:
                 noisy.loc[0:end, feature] = frozen_value
@@ -139,8 +163,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        default="data/synthetic_gate_dataset.csv",
-        help="Path to the synthetic labeled dataset CSV.",
+        default="data/philippines_rice_paddy_awd_dataset.csv",
+        help="Path to the expanded labeled dataset CSV.",
     )
     parser.add_argument(
         "--model-path",
