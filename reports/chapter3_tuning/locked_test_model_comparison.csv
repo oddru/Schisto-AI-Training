@@ -1,0 +1,3 @@
+evaluation,accuracy,precision,recall,f1_score,mae,true_negative,false_positive,false_negative,true_positive,positive_support,sample_count,class_weight,threshold,f2_score
+balanced_default_threshold,0.9988425925925926,1.0,0.9342105263157895,0.9659863945578231,0.0011574074074074073,4244,0,5,71,76,4320,balanced,0.5,0.9466666666666667
+tuned_model_on_locked_test,0.9988425925925926,1.0,0.9342105263157895,0.9659863945578231,0.0011574074074074073,4244,0,5,71,76,4320,positive_8x,0.51,0.9466666666666667

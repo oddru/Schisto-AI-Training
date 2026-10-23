@@ -80,7 +80,7 @@ SENSOR_SIGNAL_FEATURES = (
 )
 
 
-def build_model() -> Pipeline:
+def build_model(class_weight: str | dict[int, float] = "balanced") -> Pipeline:
     """Create the project Random Forest with explicit, reproducible settings."""
     preprocessor = ColumnTransformer(
         transformers=[
@@ -96,7 +96,7 @@ def build_model() -> Pipeline:
                 RandomForestClassifier(
                     n_estimators=400,
                     random_state=RANDOM_STATE,
-                    class_weight="balanced",
+                    class_weight=class_weight,
                     n_jobs=-1,
                 ),
             ),

@@ -7,11 +7,19 @@ import pandas as pd
 from src.chapter3_experiments import (
     FEATURES,
     SafeGateController,
+    build_model,
     corrupt_features,
     one_hour_depth,
     safety_interlock,
     violates_water_limits,
 )
+from src.tune_gate_model import (
+    THRESHOLDS,
+    VALIDATION_SEED,
+    make_scenario,
+    tune_threshold,
+)
+from src.predict_gate_decision import predict_sample
 
 
 def sample_reading() -> pd.Series:
@@ -48,6 +56,54 @@ class CorruptionTests(unittest.TestCase):
             np.testing.assert_array_equal(first_mask, second_mask)
             self.assertTrue(first_mask.any())
             self.assertEqual(len(first_mask), len(rows))
+
+
+class ModelTuningTests(unittest.TestCase):
+    def test_model_accepts_candidate_class_weights(self) -> None:
+        model = build_model({0: 1.0, 1: 8.0})
+        self.assertEqual(
+            model.named_steps["classifier"].class_weight,
+            {0: 1.0, 1: 8.0},
+        )
+
+    def test_seeded_scenario_is_reproducible_and_has_both_classes(self) -> None:
+        first = make_scenario(VALIDATION_SEED)
+        second = make_scenario(VALIDATION_SEED)
+        pd.testing.assert_frame_equal(first, second)
+        self.assertEqual(len(first), 4320)
+        self.assertEqual(set(first["AWD_Gate_Action"]), {0, 1})
+        flowering = first[first["Crop_Growth_Stage"] == "Reproductive/Flowering"]
+        self.assertIn(1, set(flowering["AWD_Gate_Action"]))
+
+    def test_threshold_is_selected_by_validation_f2(self) -> None:
+        labels = pd.Series([1, 1, 1, 0, 0, 0, 0, 0])
+        probabilities = np.array([0.91, 0.61, 0.42, 0.81, 0.39, 0.21, 0.10, 0.02])
+
+        curve, selected = tune_threshold(probabilities, labels, "test_weight")
+
+        self.assertEqual(len(curve), len(THRESHOLDS))
+        self.assertIn(selected["threshold"], THRESHOLDS)
+        self.assertEqual(selected["f2_score"], float(curve["f2_score"].max()))
+        self.assertEqual(selected["class_weight"], "test_weight")
+
+    def test_predict_sample_uses_explicit_threshold_when_provided(self) -> None:
+        class StubModel:
+            @staticmethod
+            def predict_proba(sample: pd.DataFrame) -> np.ndarray:
+                return np.tile(np.array([[0.48, 0.52]]), (len(sample), 1))
+
+            @staticmethod
+            def predict(sample: pd.DataFrame) -> np.ndarray:
+                return np.ones(len(sample), dtype=int)
+
+        sample = pd.DataFrame([{"feature": 1}])
+        model = StubModel()
+
+        self.assertEqual(predict_sample(model, sample, 0.53), (0, 0.52))
+        self.assertEqual(predict_sample(model, sample, 0.51), (1, 0.52))
+        self.assertEqual(predict_sample(model, sample), (1, 0.52))
+        with self.assertRaises(ValueError):
+            predict_sample(model, sample, 1.1)
 
 
 class SafetyControllerTests(unittest.TestCase):

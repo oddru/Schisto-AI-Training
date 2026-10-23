@@ -1,6 +1,5 @@
-﻿import argparse
+import argparse
 import json
-from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -35,11 +34,25 @@ def build_sample(args) -> pd.DataFrame:
     return pd.DataFrame([sample], columns=FEATURES)
 
 
+def predict_sample(model, sample: pd.DataFrame, threshold: float | None = None) -> tuple[int, float]:
+    probability = float(model.predict_proba(sample)[0, 1])
+    if threshold is None:
+        return int(model.predict(sample)[0]), probability
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("Probability threshold must be between 0 and 1.")
+    return int(probability >= threshold), probability
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Predict gate open/close status for a single sensor sample."
     )
     parser.add_argument("--model-path", type=str, default="models/gate_model_random_forest.joblib", help="Saved model file.")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        help="Optional positive-class probability threshold; omit to use the model default.",
+    )
     parser.add_argument("--month", required=True)
     parser.add_argument("--day-of-week", required=True)
     parser.add_argument("--hour", type=int, required=True)
@@ -59,8 +72,7 @@ if __name__ == "__main__":
     args = parse_args()
     model = load_model(args.model_path)
     sample = build_sample(args)
-    prediction = int(model.predict(sample)[0])
-    probability = float(model.predict_proba(sample)[0, 1])
+    prediction, probability = predict_sample(model, sample, args.threshold)
 
     print(json.dumps({
         "prediction": prediction,

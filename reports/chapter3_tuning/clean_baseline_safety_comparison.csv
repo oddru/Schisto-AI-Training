@@ -1,0 +1,3 @@
+evaluation,sample_count,direct_boundary_violations,direct_boundary_violation_rate,controlled_boundary_violations,controlled_boundary_violation_rate,false_negative_gate_actions,safe_mode_rows,safe_mode_rate,safe_mode_open_commands,interlock_overrides
+balanced_default_threshold,4320,59,0.013657407407407408,9,0.0020833333333333333,5,88,0.020370370370370372,8,50
+tuned_model_on_locked_test,4320,59,0.013657407407407408,9,0.0020833333333333333,5,88,0.020370370370370372,8,50
