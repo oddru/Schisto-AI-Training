@@ -1,0 +1,2 @@
+accuracy,precision,recall,f1_score,mae,true_negative,false_positive,false_negative,true_positive,positive_support,sample_count,train_rows,test_rows,train_first_row,train_last_row_exclusive,test_first_row,test_last_row_exclusive,split_strategy,positive_class
+0.9849537037037037,0.8888888888888888,0.4,0.5517241379310345,0.015046296296296295,843,1,12,8,20,864,3456,864,0,3456,3456,4320,chronological 80/20 holdout,1

@@ -1,0 +1,27 @@
+{
+  "dataset": "data\\philippines_rice_paddy_awd_dataset.csv",
+  "dataset_is_synthetic": true,
+  "split_strategy": "chronological 80/20 holdout",
+  "train_fraction": 0.8,
+  "model": "RandomForestClassifier",
+  "n_estimators": 400,
+  "class_weight": "balanced",
+  "random_state": 42,
+  "corruption_levels_percent": [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30
+  ],
+  "corruption_repeats": 10,
+  "fault_mask_interpretation": "Oracle injection mask used only to test fallback response; not a validated field fault detector.",
+  "safe_mode_behavior": "Hold the previous gate command and flag manual review.",
+  "open_depth_change_cm_per_hour": 1.0,
+  "closed_depth_change_cm_per_hour": -0.5,
+  "awd_min_depth_cm": -15.0,
+  "flowering_min_depth_cm": 0.0,
+  "max_depth_cm": 5.0,
+  "max_reading_age_seconds": 3600
+}

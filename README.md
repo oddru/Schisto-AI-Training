@@ -60,6 +60,22 @@ python src/evaluate_sensor_robustness.py --dataset data/philippines_rice_paddy_a
 
 Results are exported to `data/sensor_robustness_results.csv`.
 
+## Chapter 3 experiments
+
+Run the reproducible Chapter 3 evaluation with a chronological 80/20 holdout and ten repeated corruption trials per sensor-fault condition:
+
+```bash
+python src/chapter3_experiments.py --repeats 10
+```
+
+The script writes the held-out baseline, dataset summaries, repeated robustness metrics, one-hour AWD-boundary projections, assumptions, and figures to `reports/chapter3_experiments/`. The one-hour actuator rates and AWD limits are explicit simulation assumptions, not field-calibrated response measurements. The fault-injection mask is an oracle used to test fallback behavior; it is not a validated real sensor-fault detector. The controller simulation is software-only and does not constitute ESP32/Wokwi hardware-in-the-loop validation.
+
+Run the controller and corruption unit tests with:
+
+```bash
+python -m unittest tests.test_chapter3_experiments -v
+```
+
 ## Research limitation
 
 This is a synthetic supervised-learning benchmark. It can support controlled algorithm and robustness experiments, but real deployment claims require field sensor data, observed gate actions, snail observations, and epidemiological validation.

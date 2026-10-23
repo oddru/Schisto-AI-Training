@@ -1,0 +1,6 @@
+label,category,count,percentage
+AWD_Gate_Action,0,4213,0.9752314814814815
+AWD_Gate_Action,1,107,0.02476851851851852
+Snail_Habitat_Risk,High,32,0.007407407407407408
+Snail_Habitat_Risk,Low,3810,0.8819444444444444
+Snail_Habitat_Risk,Moderate,478,0.11064814814814815
