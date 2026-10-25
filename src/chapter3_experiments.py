@@ -78,6 +78,9 @@ SENSOR_SIGNAL_FEATURES = (
     "Vegetation_Coverage_Percent",
     "Vegetation_Height_cm",
 )
+SENSOR_NUMERIC_FEATURES = [
+    name for name in SENSOR_SIGNAL_FEATURES if name in NUMERIC_FEATURES
+]
 
 
 def build_model(class_weight: str | dict[int, float] = "balanced") -> Pipeline:
@@ -163,7 +166,7 @@ def corrupt_features(
     fault_mask = np.zeros(len(features), dtype=bool)
 
     if fault_type == "Gaussian noise":
-        for feature in NUMERIC_FEATURES:
+        for feature in SENSOR_NUMERIC_FEATURES:
             sigma = level * float(features[feature].std(ddof=0))
             corrupted[feature] += rng.normal(0.0, sigma, size=len(features))
         fault_mask[:] = True
@@ -171,13 +174,13 @@ def corrupt_features(
         count = max(1, int(round(len(features) * level)))
         indices = rng.choice(len(features), size=count, replace=False)
         fault_mask[indices] = True
-        for feature in NUMERIC_FEATURES:
+        for feature in SENSOR_NUMERIC_FEATURES:
             lower, upper = _bounds(feature)
             corrupted.loc[corrupted.index[indices], feature] = rng.choice(
                 [lower, upper], size=count
             )
     elif fault_type == "Sensor drift":
-        for feature in NUMERIC_FEATURES:
+        for feature in SENSOR_NUMERIC_FEATURES:
             lower, upper = _bounds(feature)
             offsets = np.linspace(0.0, level * (upper - lower), len(features))
             corrupted[feature] += offsets
@@ -187,11 +190,11 @@ def corrupt_features(
         start = int(rng.integers(0, len(features) - count + 1))
         stop = start + count
         fault_mask[start:stop] = True
-        for feature in NUMERIC_FEATURES:
+        for feature in SENSOR_NUMERIC_FEATURES:
             frozen_value = corrupted.iloc[start][feature]
             corrupted.iloc[start:stop, corrupted.columns.get_loc(feature)] = frozen_value
 
-    for feature in NUMERIC_FEATURES:
+    for feature in SENSOR_NUMERIC_FEATURES:
         lower, upper = _bounds(feature)
         corrupted[feature] = corrupted[feature].clip(lower, upper)
     return corrupted, fault_mask

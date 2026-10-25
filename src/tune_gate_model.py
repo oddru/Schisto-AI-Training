@@ -435,6 +435,7 @@ def run_tuning_experiment(
         "test_figure": output_dir / "Figure_3_3_locked_test_comparison.png",
         "robustness_figure": output_dir / "Figure_3_4_robustness_curves.png",
         "safety_figure": output_dir / "Figure_3_5_awd_safety.png",
+        "precision_recall_figure": output_dir / "Figure_3_6_fault_precision_recall.png",
     }
 
 
@@ -580,6 +581,46 @@ def plot_robustness_and_safety(
     figure.savefig(output_dir / "Figure_3_5_awd_safety.png", dpi=200)
     plt.close(figure)
 
+    figure, axes = plt.subplots(2, 2, figsize=(10, 7), constrained_layout=True)
+    for axis, fault_type in zip(axes.flat, FAULT_TYPES):
+        group = robustness[robustness["fault_type"] == fault_type].sort_values(
+            "noise_percent"
+        )
+        intensity = group["noise_percent"].to_numpy()
+        for metric, color in (("precision", "#3569a8"), ("recall", "#d17a22")):
+            mean = group[f"{metric}_mean"].to_numpy() * 100
+            std = group[f"{metric}_std"].fillna(0).to_numpy() * 100
+            axis.plot(intensity, mean, marker="o", label=metric.title(), color=color)
+            axis.fill_between(
+                intensity,
+                np.maximum(0, mean - std),
+                np.minimum(100, mean + std),
+                color=color,
+                alpha=0.15,
+            )
+        axis.axhline(100, color="#3569a8", linestyle=":", linewidth=0.9)
+        axis.axhline(
+            float(test_comparison.loc[
+                test_comparison["evaluation"] == "tuned_model_on_locked_test",
+                "recall",
+            ].iloc[0]) * 100,
+            color="#d17a22",
+            linestyle=":",
+            linewidth=0.9,
+        )
+        axis.set_title(fault_type)
+        axis.set_xlabel("Corruption intensity (%)")
+        axis.set_ylabel("Positive-class metric (%)")
+        axis.set_xticks([5, 10, 15, 20, 25, 30])
+        axis.set_ylim(0, 105)
+        axis.grid(axis="y", alpha=0.2)
+    axes.flat[0].legend(loc="best", fontsize=8)
+    figure.suptitle(
+        "Precision-recall response to TFCST faults (mean ± SD, 10 trials)",
+        fontsize=12,
+    )
+    figure.savefig(output_dir / "Figure_3_6_fault_precision_recall.png", dpi=200)
+    plt.close(figure)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)

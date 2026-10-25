@@ -52,7 +52,7 @@ python src/predict_gate_decision.py --model-path models/gate_model_random_forest
 
 ## Sensor robustness evaluation
 
-The robustness script evaluates Gaussian, impulse, drift, and freezing corruption from 5% through 30%. Noise is applied to numeric sensor features while categorical context remains unchanged.
+The robustness script evaluates Gaussian, impulse, drift, and freezing corruption from 5% through 30%. Noise is applied to direct numeric sensor channels; categorical context, the temporal `Hour` feature, and generator-derived `Inundation_Duration_Days` remain unchanged.
 
 ```bash
 python src/evaluate_sensor_robustness.py --dataset data/philippines_rice_paddy_awd_dataset.csv
@@ -69,6 +69,10 @@ python src/chapter3_experiments.py --repeats 10
 ```
 
 The script writes the held-out baseline, dataset summaries, repeated robustness metrics, one-hour AWD-boundary projections, assumptions, and figures to `reports/chapter3_experiments/`. The one-hour actuator rates and AWD limits are explicit simulation assumptions, not field-calibrated response measurements. The fault-injection mask is an oracle used to test fallback behavior; it is not a validated real sensor-fault detector. The controller simulation is software-only and does not constitute ESP32/Wokwi hardware-in-the-loop validation.
+
+### ESP32/Wokwi controller demonstrator
+
+The `wokwi/` directory contains a PlatformIO ESP32 firmware demonstrator for the input-validation, safe-mode, and one-hour AWD interlock logic. It receives test readings and an externally supplied requested gate action through the Wokwi serial monitor and displays open, closed, and safe-mode states on LEDs. The Random Forest is not embedded in this demonstrator; it validates controller behavior only. Follow `wokwi/README.md` to build and run it. A successful firmware build does not by itself mean a Wokwi simulation or physical hardware test was performed.
 
 ### Recall-prioritized model selection
 

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "author": "Schisto-AI-Training",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "gateOpenLed",
+      "top": -70,
+      "left": 280,
+      "attrs": { "color": "green", "label": "GATE OPEN" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "openResistor",
+      "top": -10,
+      "left": 320,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "gateClosedLed",
+      "top": 40,
+      "left": 280,
+      "attrs": { "color": "red", "label": "GATE CLOSED" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "closedResistor",
+      "top": 100,
+      "left": 320,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "safeModeLed",
+      "top": 150,
+      "left": 280,
+      "attrs": { "color": "yellow", "label": "SAFE MODE" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "safeResistor",
+      "top": 210,
+      "left": 320,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    ["esp:18", "gateOpenLed:A", "green", []],
+    ["gateOpenLed:C", "openResistor:1", "green", []],
+    ["openResistor:2", "esp:GND.1", "black", []],
+    ["esp:19", "gateClosedLed:A", "red", []],
+    ["gateClosedLed:C", "closedResistor:1", "red", []],
+    ["closedResistor:2", "esp:GND.1", "black", []],
+    ["esp:21", "safeModeLed:A", "yellow", []],
+    ["safeModeLed:C", "safeResistor:1", "yellow", []],
+    ["safeResistor:2", "esp:GND.1", "black", []]
+  ],
+  "serialMonitor": {
+    "display": "always",
+    "newline": "lf"
+  }
+}

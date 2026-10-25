@@ -56,6 +56,11 @@ class CorruptionTests(unittest.TestCase):
             np.testing.assert_array_equal(first_mask, second_mask)
             self.assertTrue(first_mask.any())
             self.assertEqual(len(first_mask), len(rows))
+            pd.testing.assert_series_equal(first["Hour"], rows["Hour"])
+            pd.testing.assert_series_equal(
+                first["Inundation_Duration_Days"],
+                rows["Inundation_Duration_Days"],
+            )
 
 
 class ModelTuningTests(unittest.TestCase):
