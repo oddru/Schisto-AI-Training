@@ -1,0 +1,4 @@
+stream,value_column,records,start,end,minimum,median,maximum,duplicate_timestamps,median_gap_seconds,gaps_over_1_5x_expected,maximum_gap_seconds
+D_moisture.txt,moisture,4293,2022-07-12 00:03:51,2022-09-16 23:56:08,68.57,72.24,86.94,0,1195.0,122,227021.0
+D_flowmeter.txt,litres,17411,2022-07-12 00:00:15,2022-09-16 23:55:16,0.0,38894.2,79479.4666666666,1,300.0,144,225898.0
+D_valve.txt,relay,17427,2022-07-12 00:00:00,2022-09-16 23:57:37,0.0,0.0,1.0,0,300.0,138,226194.0

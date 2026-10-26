@@ -16,8 +16,11 @@
     30
   ],
   "corruption_repeats": 10,
-  "fault_mask_interpretation": "Oracle injection mask used only to test fallback response; not a validated field fault detector.",
+  "fault_mask_interpretation": "Row-by-channel oracle injection mask used only to test conditional controller response; not a validated field fault detector.",
+  "conditional_fault_policy": "Water depth is critical for every stage. Soil moisture is critical outside flowering; faults in other measured channels allow the explicit AWD rule to continue in degraded mode.",
   "safe_mode_behavior": "Hold the previous gate command and flag manual review.",
+  "controller_authority": "The configured synthetic AWD policy controls valid readings; the Random Forest action is advisory only.",
+  "awd_policy": "During flowering, request open below 2 cm; otherwise request open at or below -15 cm or at soil moisture at or below 25%.",
   "open_depth_change_cm_per_hour": 1.0,
   "closed_depth_change_cm_per_hour": -0.5,
   "awd_min_depth_cm": -15.0,

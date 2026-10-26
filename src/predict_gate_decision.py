@@ -34,7 +34,12 @@ def build_sample(args) -> pd.DataFrame:
     return pd.DataFrame([sample], columns=FEATURES)
 
 
-def predict_sample(model, sample: pd.DataFrame, threshold: float | None = None) -> tuple[int, float]:
+def predict_sample(
+    model,
+    sample: pd.DataFrame,
+    threshold: float | None = None,
+) -> tuple[int, float]:
+    """Return an advisory model prediction and its positive-class probability."""
     probability = float(model.predict_proba(sample)[0, 1])
     if threshold is None:
         return int(model.predict(sample)[0]), probability
@@ -45,7 +50,10 @@ def predict_sample(model, sample: pd.DataFrame, threshold: float | None = None) 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Predict gate open/close status for a single sensor sample."
+        description=(
+            "Generate an advisory gate-action prediction for one sensor sample; "
+            "this is not a field control command."
+        )
     )
     parser.add_argument("--model-path", type=str, default="models/gate_model_random_forest.joblib", help="Saved model file.")
     parser.add_argument(
@@ -77,6 +85,7 @@ if __name__ == "__main__":
     print(json.dumps({
         "prediction": prediction,
         "prediction_label": "gate_open" if prediction == 1 else "gate_close",
+        "prediction_role": "advisory_only",
         "probability_gate_open": probability,
         "sample": sample.to_dict(orient="records")[0],
     }, indent=2))

@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import time
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,11 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
+
+if __package__:
+    from .generate_philippines_rice_paddy_awd_dataset import awd_policy_actions
+else:
+    from generate_philippines_rice_paddy_awd_dataset import awd_policy_actions
 
 
 FEATURES = [
@@ -149,55 +155,88 @@ def _bounds(feature: str) -> tuple[float, float]:
     return SENSOR_RANGES[feature]
 
 
+def corrupt_features_by_channel(
+    features: pd.DataFrame,
+    fault_type: str,
+    level: float,
+    seed: int,
+    affected_features: Collection[str] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return corrupted inputs and an oracle row-by-channel injection mask."""
+    if fault_type not in FAULT_TYPES:
+        raise ValueError(f"Unsupported fault type: {fault_type}")
+    if not 0 < level <= 1:
+        raise ValueError("Corruption intensity must be in (0, 1].")
+    selected_features = (
+        list(SENSOR_NUMERIC_FEATURES)
+        if affected_features is None
+        else list(dict.fromkeys(affected_features))
+    )
+    invalid_features = sorted(set(selected_features) - set(SENSOR_NUMERIC_FEATURES))
+    if invalid_features:
+        raise ValueError(f"Unsupported sensor feature(s): {invalid_features}")
+    if not selected_features:
+        raise ValueError("At least one sensor feature must be selected.")
+    missing_features = sorted(set(selected_features) - set(features.columns))
+    if missing_features:
+        raise ValueError(f"Input data is missing sensor feature(s): {missing_features}")
+
+    rng = np.random.default_rng(seed)
+    corrupted = features.copy()
+    fault_mask = pd.DataFrame(
+        False,
+        index=features.index,
+        columns=SENSOR_NUMERIC_FEATURES,
+    )
+
+    if fault_type == "Gaussian noise":
+        for feature in selected_features:
+            sigma = level * float(features[feature].std(ddof=0))
+            corrupted[feature] += rng.normal(0.0, sigma, size=len(features))
+            fault_mask[feature] = True
+    elif fault_type == "Impulse spikes":
+        count = max(1, int(round(len(features) * level)))
+        indices = rng.choice(len(features), size=count, replace=False)
+        for feature in selected_features:
+            lower, upper = _bounds(feature)
+            feature_position = corrupted.columns.get_loc(feature)
+            mask_position = fault_mask.columns.get_loc(feature)
+            corrupted.iloc[indices, feature_position] = rng.choice(
+                [lower, upper], size=count
+            )
+            fault_mask.iloc[indices, mask_position] = True
+    elif fault_type == "Sensor drift":
+        for feature in selected_features:
+            lower, upper = _bounds(feature)
+            offsets = np.linspace(0.0, level * (upper - lower), len(features))
+            corrupted[feature] += offsets
+            fault_mask[feature] = True
+    else:
+        count = max(1, int(math.ceil(len(features) * level)))
+        start = int(rng.integers(0, len(features) - count + 1))
+        stop = start + count
+        for feature in selected_features:
+            frozen_value = corrupted.iloc[start][feature]
+            corrupted.iloc[start:stop, corrupted.columns.get_loc(feature)] = frozen_value
+            fault_mask.iloc[start:stop, fault_mask.columns.get_loc(feature)] = True
+
+    for feature in selected_features:
+        lower, upper = _bounds(feature)
+        corrupted[feature] = corrupted[feature].clip(lower, upper)
+    return corrupted, fault_mask
+
+
 def corrupt_features(
     features: pd.DataFrame,
     fault_type: str,
     level: float,
     seed: int,
 ) -> tuple[pd.DataFrame, np.ndarray]:
-    """Return corrupted features and an oracle mask of rows modified by injection."""
-    if fault_type not in FAULT_TYPES:
-        raise ValueError(f"Unsupported fault type: {fault_type}")
-    if not 0 < level <= 1:
-        raise ValueError("Corruption intensity must be in (0, 1].")
-
-    rng = np.random.default_rng(seed)
-    corrupted = features.copy()
-    fault_mask = np.zeros(len(features), dtype=bool)
-
-    if fault_type == "Gaussian noise":
-        for feature in SENSOR_NUMERIC_FEATURES:
-            sigma = level * float(features[feature].std(ddof=0))
-            corrupted[feature] += rng.normal(0.0, sigma, size=len(features))
-        fault_mask[:] = True
-    elif fault_type == "Impulse spikes":
-        count = max(1, int(round(len(features) * level)))
-        indices = rng.choice(len(features), size=count, replace=False)
-        fault_mask[indices] = True
-        for feature in SENSOR_NUMERIC_FEATURES:
-            lower, upper = _bounds(feature)
-            corrupted.loc[corrupted.index[indices], feature] = rng.choice(
-                [lower, upper], size=count
-            )
-    elif fault_type == "Sensor drift":
-        for feature in SENSOR_NUMERIC_FEATURES:
-            lower, upper = _bounds(feature)
-            offsets = np.linspace(0.0, level * (upper - lower), len(features))
-            corrupted[feature] += offsets
-        fault_mask[:] = True
-    else:
-        count = max(1, int(math.ceil(len(features) * level)))
-        start = int(rng.integers(0, len(features) - count + 1))
-        stop = start + count
-        fault_mask[start:stop] = True
-        for feature in SENSOR_NUMERIC_FEATURES:
-            frozen_value = corrupted.iloc[start][feature]
-            corrupted.iloc[start:stop, corrupted.columns.get_loc(feature)] = frozen_value
-
-    for feature in SENSOR_NUMERIC_FEATURES:
-        lower, upper = _bounds(feature)
-        corrupted[feature] = corrupted[feature].clip(lower, upper)
-    return corrupted, fault_mask
+    """Return corrupted inputs and a row-level oracle mask for compatibility."""
+    corrupted, feature_mask = corrupt_features_by_channel(
+        features, fault_type, level, seed
+    )
+    return corrupted, feature_mask.any(axis=1).to_numpy()
 
 
 def _lower_water_limit(stage: str) -> float:
@@ -223,28 +262,47 @@ def violates_water_limits(depth_cm: float, stage: str) -> bool:
 
 
 def safety_interlock(requested_open: bool, reading: pd.Series) -> bool:
-    """Override a command if its one-hour projection crosses an AWD limit."""
+    """Choose the requested action when safe, otherwise the safer projection."""
     depth = float(reading["Water_Table_Depth_cm"])
     stage = str(reading["Crop_Growth_Stage"])
     minimum = _lower_water_limit(stage)
     open_projection = one_hour_depth(depth, True)
     close_projection = one_hour_depth(depth, False)
-    if open_projection > MAX_DEPTH_CM:
-        return False
-    if close_projection < minimum:
+    open_is_safe = not violates_water_limits(open_projection, stage)
+    close_is_safe = not violates_water_limits(close_projection, stage)
+    if requested_open and open_is_safe:
         return True
-    return requested_open
+    if not requested_open and close_is_safe:
+        return False
+    if open_is_safe:
+        return True
+    if close_is_safe:
+        return False
+
+    open_violation = max(minimum - open_projection, 0.0) + max(
+        open_projection - MAX_DEPTH_CM, 0.0
+    )
+    close_violation = max(minimum - close_projection, 0.0) + max(
+        close_projection - MAX_DEPTH_CM, 0.0
+    )
+    if open_violation == close_violation:
+        return requested_open
+    return open_violation < close_violation
 
 
 @dataclass
 class ControllerResult:
     gate_open: bool
     safe_mode: bool
+    degraded_mode: bool
     reason: str
+    policy_requested_open: bool | None
+    model_agrees_with_policy: bool | None
+    faulted_features: tuple[str, ...]
 
 
 class SafeGateController:
-    """Small software controller with hold-last-state fail-safe semantics."""
+    """Apply the configured AWD policy; model requests are advisory only."""
 
     def __init__(self, initial_gate_open: bool = False) -> None:
         self.gate_open = initial_gate_open
@@ -258,18 +316,60 @@ class SafeGateController:
         now: datetime,
         fault_detected: bool = False,
         requested_open: bool = False,
+        faulty_features: Collection[str] = (),
     ) -> ControllerResult:
+        unknown_features = sorted(
+            set(faulty_features) - set(SENSOR_NUMERIC_FEATURES)
+        )
+        if unknown_features:
+            raise ValueError(f"Unsupported faulted sensor feature(s): {unknown_features}")
+        faulted = set(faulty_features)
         reason = self._invalid_reason(reading, captured_at, now, fault_detected)
-        if not reason and self._is_frozen(reading):
-            reason = "frozen_readings"
+        frozen_features: set[str] = set()
+        if not reason:
+            frozen_features = self._frozen_features(reading)
+            faulted.update(frozen_features)
+        stage = str(reading.get("Crop_Growth_Stage", ""))
+        critical_features = {"Water_Table_Depth_cm"}
+        if stage != "Reproductive/Flowering":
+            critical_features.add("Soil_Moisture_VWC_Percent")
+        critical_faults = tuple(sorted(faulted & critical_features))
         if reason:
-            return ControllerResult(self.gate_open, True, reason)
+            return ControllerResult(
+                self.gate_open, True, False, reason, None, None, tuple(sorted(faulted))
+            )
+        if critical_faults:
+            return ControllerResult(
+                self.gate_open,
+                True,
+                False,
+                f"critical_sensor_fault:{','.join(critical_faults)}",
+                None,
+                None,
+                tuple(sorted(faulted)),
+            )
 
-        self.gate_open = safety_interlock(requested_open, reading)
-        return ControllerResult(self.gate_open, False, "ok")
+        policy_request = bool(
+            awd_policy_actions(
+                np.array([reading["Crop_Growth_Stage"]]),
+                np.array([reading["Water_Table_Depth_cm"]], dtype=float),
+                np.array([reading["Soil_Moisture_VWC_Percent"]], dtype=float),
+            )[0]
+        )
+        degraded = bool(faulted)
+        self.gate_open = safety_interlock(policy_request, reading)
+        return ControllerResult(
+            self.gate_open,
+            False,
+            degraded,
+            f"advisory_sensor_fault:{','.join(sorted(faulted))}" if degraded else "ok",
+            policy_request,
+            requested_open == policy_request,
+            tuple(sorted(faulted)),
+        )
 
-    def _is_frozen(self, reading: pd.Series) -> bool:
-        frozen = False
+    def _frozen_features(self, reading: pd.Series) -> set[str]:
+        frozen_features = set()
         for feature in SENSOR_SIGNAL_FEATURES:
             value = float(reading[feature])
             if value == self._last_sensor_values.get(feature):
@@ -277,8 +377,9 @@ class SafeGateController:
             else:
                 self._identical_counts[feature] = 0
             self._last_sensor_values[feature] = value
-            frozen |= self._identical_counts[feature] >= 2
-        return frozen
+            if self._identical_counts[feature] >= 2:
+                frozen_features.add(feature)
+        return frozen_features
 
     @staticmethod
     def _invalid_reason(
@@ -333,9 +434,9 @@ def evaluate_actuation(
     sensor_readings: pd.DataFrame,
     physical_states: pd.DataFrame,
     predictions: np.ndarray,
-    fault_mask: np.ndarray,
+    fault_mask: np.ndarray | pd.DataFrame,
 ) -> dict[str, float | int]:
-    """Measure direct and interlocked one-hour outcomes against synthetic states."""
+    """Compare direct model and policy-controlled projections on synthetic states."""
     if not (
         len(sensor_readings)
         == len(physical_states)
@@ -350,8 +451,12 @@ def evaluate_actuation(
     direct_violations = 0
     controlled_violations = 0
     safe_modes = 0
+    degraded_modes = 0
+    critical_fault_rows = 0
     safe_mode_open_commands = 0
     false_negative_actions = 0
+    model_policy_disagreements = 0
+    model_policy_comparisons = 0
     interlock_overrides = 0
     controller = SafeGateController()
 
@@ -369,18 +474,40 @@ def evaluate_actuation(
         )
 
         timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        result = controller.step(
-            reading,
-            timestamp,
-            timestamp,
-            fault_detected=bool(fault_mask[row_index]),
-            requested_open=requested_open,
-        )
+        if isinstance(fault_mask, pd.DataFrame):
+            faulty_features = tuple(
+                feature
+                for feature in SENSOR_NUMERIC_FEATURES
+                if bool(fault_mask.iloc[row_index][feature])
+            )
+            result = controller.step(
+                reading,
+                timestamp,
+                timestamp,
+                requested_open=requested_open,
+                faulty_features=faulty_features,
+            )
+        else:
+            result = controller.step(
+                reading,
+                timestamp,
+                timestamp,
+                fault_detected=bool(fault_mask[row_index]),
+                requested_open=requested_open,
+            )
         if result.safe_mode:
             safe_modes += 1
             safe_mode_open_commands += int(result.gate_open)
+            critical_fault_rows += int(
+                result.reason.startswith("critical_sensor_fault:")
+            )
         else:
-            interlock_overrides += int(result.gate_open != requested_open)
+            degraded_modes += int(result.degraded_mode)
+            interlock_overrides += int(
+                result.gate_open != result.policy_requested_open
+            )
+            model_policy_comparisons += 1
+            model_policy_disagreements += int(not result.model_agrees_with_policy)
         controlled_depth = one_hour_depth(actual_depth, result.gate_open)
         controlled_violations += int(violates_water_limits(controlled_depth, stage))
     denominator = len(sensor_readings)
@@ -391,11 +518,45 @@ def evaluate_actuation(
         "controlled_boundary_violations": controlled_violations,
         "controlled_boundary_violation_rate": controlled_violations / denominator,
         "false_negative_gate_actions": false_negative_actions,
+        "critical_fault_rows": critical_fault_rows,
+        "degraded_mode_rows": degraded_modes,
+        "degraded_mode_rate": degraded_modes / denominator,
+        "model_policy_comparisons": model_policy_comparisons,
+        "model_policy_disagreements": model_policy_disagreements,
+        "model_policy_disagreement_rate": (
+            model_policy_disagreements / model_policy_comparisons
+            if model_policy_comparisons
+            else 0.0
+        ),
         "safe_mode_rows": safe_modes,
         "safe_mode_rate": safe_modes / denominator,
         "safe_mode_open_commands": safe_mode_open_commands,
         "interlock_overrides": interlock_overrides,
     }
+
+
+def evaluate_feature_fault_scopes(
+    sensor_readings: pd.DataFrame,
+    physical_states: pd.DataFrame,
+    predictions: np.ndarray,
+) -> pd.DataFrame:
+    """Measure controller response when one identified sensor channel is faulty."""
+    rows = []
+    for feature in SENSOR_NUMERIC_FEATURES:
+        fault_mask = pd.DataFrame(
+            False,
+            index=sensor_readings.index,
+            columns=SENSOR_NUMERIC_FEATURES,
+        )
+        fault_mask[feature] = True
+        metrics = evaluate_actuation(
+            sensor_readings,
+            physical_states,
+            predictions,
+            fault_mask,
+        )
+        rows.append({"faulted_feature": feature, **metrics})
+    return pd.DataFrame(rows)
 
 
 def summarize_dataset(dataset: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -500,7 +661,7 @@ def plot_results(
         y_positions + 0.18,
         safety_levels["controlled_boundary_violation_rate_mean"] * 100,
         height=0.35,
-        label="Interlock + fault-oracle fallback",
+        label="AWD policy + interlock/fault fallback",
     )
     axis.set_yticks(y_positions, safety_levels["scenario"])
     axis.invert_yaxis()
@@ -558,7 +719,7 @@ def run_experiments(
         for level_index, level in enumerate(NOISE_LEVELS):
             for repeat in range(repeats):
                 seed = RANDOM_STATE + fault_index * 10_000 + level_index * 100 + repeat
-                corrupted, fault_mask = corrupt_features(
+                corrupted, fault_mask = corrupt_features_by_channel(
                     x_test, fault_type, level, seed
                 )
                 predictions = model.predict(corrupted)
@@ -615,6 +776,12 @@ def run_experiments(
         "controlled_boundary_violations",
         "controlled_boundary_violation_rate",
         "false_negative_gate_actions",
+        "critical_fault_rows",
+        "degraded_mode_rows",
+        "degraded_mode_rate",
+        "model_policy_comparisons",
+        "model_policy_disagreements",
+        "model_policy_disagreement_rate",
         "safe_mode_rows",
         "safe_mode_rate",
         "safe_mode_open_commands",
@@ -642,6 +809,11 @@ def run_experiments(
         output_dir / "actuation_safety_replicates.csv", index=False
     )
     actuation_summary.to_csv(output_dir / "actuation_safety_summary.csv", index=False)
+    evaluate_feature_fault_scopes(
+        baseline_input,
+        physical_input,
+        baseline_predictions,
+    ).to_csv(output_dir / "feature_fault_scope_safety.csv", index=False)
 
     with (output_dir / "experiment_assumptions.json").open("w", encoding="utf-8") as file:
         json.dump(
@@ -657,10 +829,24 @@ def run_experiments(
                 "corruption_levels_percent": [int(level * 100) for level in NOISE_LEVELS],
                 "corruption_repeats": repeats,
                 "fault_mask_interpretation": (
-                    "Oracle injection mask used only to test fallback response; "
-                    "not a validated field fault detector."
+                    "Row-by-channel oracle injection mask used only to test "
+                    "conditional controller response; not a validated field "
+                    "fault detector."
+                ),
+                "conditional_fault_policy": (
+                    "Water depth is critical for every stage. Soil moisture is "
+                    "critical outside flowering; faults in other measured channels "
+                    "allow the explicit AWD rule to continue in degraded mode."
                 ),
                 "safe_mode_behavior": "Hold the previous gate command and flag manual review.",
+                "controller_authority": (
+                    "The configured synthetic AWD policy controls valid readings; "
+                    "the Random Forest action is advisory only."
+                ),
+                "awd_policy": (
+                    "During flowering, request open below 2 cm; otherwise request "
+                    "open at or below -15 cm or at soil moisture at or below 25%."
+                ),
                 "open_depth_change_cm_per_hour": OPEN_DEPTH_CHANGE_CM_PER_HOUR,
                 "closed_depth_change_cm_per_hour": CLOSED_DEPTH_CHANGE_CM_PER_HOUR,
                 "awd_min_depth_cm": AWD_MIN_DEPTH_CM,
@@ -679,6 +865,7 @@ def run_experiments(
         "replicates": output_dir / "robustness_replicates.csv",
         "actuation": output_dir / "actuation_safety_summary.csv",
         "actuation_replicates": output_dir / "actuation_safety_replicates.csv",
+        "feature_fault_scope_safety": output_dir / "feature_fault_scope_safety.csv",
         "assumptions": output_dir / "experiment_assumptions.json",
         "figure_labels": output_dir / "Figure_3_1_label_distributions.png",
         "figure_results": output_dir / "Figure_3_2_robustness_curves.png",

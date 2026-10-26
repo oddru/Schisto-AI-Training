@@ -9,6 +9,7 @@ from src.chapter3_experiments import (
     SafeGateController,
     build_model,
     corrupt_features,
+    corrupt_features_by_channel,
     one_hour_depth,
     safety_interlock,
     violates_water_limits,
@@ -18,6 +19,9 @@ from src.tune_gate_model import (
     VALIDATION_SEED,
     make_scenario,
     tune_threshold,
+)
+from src.generate_philippines_rice_paddy_awd_dataset import (
+    awd_policy_actions,
 )
 from src.predict_gate_decision import predict_sample
 
@@ -62,6 +66,24 @@ class CorruptionTests(unittest.TestCase):
                 rows["Inundation_Duration_Days"],
             )
 
+    def test_channel_fault_mask_identifies_only_selected_sensor(self) -> None:
+        rows = pd.DataFrame([sample_reading()[FEATURES].to_dict()] * 40)
+        corrupted, feature_mask = corrupt_features_by_channel(
+            rows,
+            "Sensor drift",
+            0.15,
+            123,
+            affected_features=("Water_pH",),
+        )
+
+        self.assertTrue(feature_mask["Water_pH"].all())
+        self.assertFalse(feature_mask.drop(columns="Water_pH").any().any())
+        pd.testing.assert_series_equal(corrupted["Hour"], rows["Hour"])
+        pd.testing.assert_series_equal(
+            corrupted["Water_Table_Depth_cm"],
+            rows["Water_Table_Depth_cm"],
+        )
+
 
 class ModelTuningTests(unittest.TestCase):
     def test_model_accepts_candidate_class_weights(self) -> None:
@@ -79,6 +101,24 @@ class ModelTuningTests(unittest.TestCase):
         self.assertEqual(set(first["AWD_Gate_Action"]), {0, 1})
         flowering = first[first["Crop_Growth_Stage"] == "Reproductive/Flowering"]
         self.assertIn(1, set(flowering["AWD_Gate_Action"]))
+        self.assertTrue(
+            np.array_equal(
+                awd_policy_actions(
+                    first["Crop_Growth_Stage"].to_numpy(),
+                    first["Water_Table_Depth_cm"].to_numpy(),
+                    first["Soil_Moisture_VWC_Percent"].to_numpy(),
+                ).astype(int),
+                first["AWD_Gate_Action"].to_numpy(),
+            )
+        )
+
+    def test_awd_policy_rejects_mismatched_input_shapes(self) -> None:
+        with self.assertRaises(ValueError):
+            awd_policy_actions(
+                np.array(["Vegetative/Tillering"]),
+                np.array([-15.0, -14.0]),
+                np.array([25.0]),
+            )
 
     def test_threshold_is_selected_by_validation_f2(self) -> None:
         labels = pd.Series([1, 1, 1, 0, 0, 0, 0, 0])
@@ -112,6 +152,72 @@ class ModelTuningTests(unittest.TestCase):
 
 
 class SafetyControllerTests(unittest.TestCase):
+    def test_model_request_is_advisory_and_policy_controls_valid_readings(self) -> None:
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        reading = sample_reading()
+        reading["Water_Table_Depth_cm"] = -15.0
+        result = SafeGateController().step(
+            reading,
+            now,
+            now,
+            requested_open=False,
+        )
+
+        self.assertTrue(result.gate_open)
+        self.assertFalse(result.safe_mode)
+        self.assertFalse(result.model_agrees_with_policy)
+
+    def test_noncritical_fault_uses_policy_in_degraded_mode(self) -> None:
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        result = SafeGateController().step(
+            sample_reading(),
+            now,
+            now,
+            requested_open=True,
+            faulty_features=("Water_pH",),
+        )
+
+        self.assertFalse(result.safe_mode)
+        self.assertTrue(result.degraded_mode)
+        self.assertEqual(result.faulted_features, ("Water_pH",))
+        self.assertTrue(result.reason.startswith("advisory_sensor_fault:"))
+
+    def test_critical_water_depth_fault_enters_safe_mode(self) -> None:
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        controller = SafeGateController(initial_gate_open=False)
+        reading = sample_reading()
+        reading["Water_Table_Depth_cm"] = -15.0
+        result = controller.step(
+            reading,
+            now,
+            now,
+            requested_open=True,
+            faulty_features=("Water_Table_Depth_cm",),
+        )
+
+        self.assertTrue(result.safe_mode)
+        self.assertEqual(
+            result.reason,
+            "critical_sensor_fault:Water_Table_Depth_cm",
+        )
+        self.assertFalse(result.gate_open)
+
+    def test_moisture_fault_is_noncritical_during_flowering(self) -> None:
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        reading = sample_reading()
+        reading["Crop_Growth_Stage"] = "Reproductive/Flowering"
+        reading["Water_Table_Depth_cm"] = 0.2
+        result = SafeGateController().step(
+            reading,
+            now,
+            now,
+            faulty_features=("Soil_Moisture_VWC_Percent",),
+        )
+
+        self.assertFalse(result.safe_mode)
+        self.assertTrue(result.degraded_mode)
+        self.assertTrue(result.gate_open)
+
     def test_stale_reading_holds_last_gate_command(self) -> None:
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
         controller = SafeGateController(initial_gate_open=True)
@@ -143,6 +249,7 @@ class SafetyControllerTests(unittest.TestCase):
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
         controller = SafeGateController(initial_gate_open=True)
         reading = sample_reading()
+        reading["Water_Table_Depth_cm"] = -15.0
         first = controller.step(reading, now, now, requested_open=True)
         second = controller.step(reading, now, now, requested_open=True)
         third = controller.step(reading, now, now, requested_open=False)
@@ -150,10 +257,10 @@ class SafetyControllerTests(unittest.TestCase):
         self.assertFalse(first.safe_mode)
         self.assertFalse(second.safe_mode)
         self.assertTrue(third.safe_mode)
-        self.assertEqual(third.reason, "frozen_readings")
+        self.assertTrue(third.reason.startswith("critical_sensor_fault:"))
         self.assertTrue(third.gate_open)
 
-    def test_single_frozen_sensor_triggers_safe_mode(self) -> None:
+    def test_single_frozen_noncritical_sensor_uses_degraded_mode(self) -> None:
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
         controller = SafeGateController()
         results = []
@@ -175,8 +282,9 @@ class SafetyControllerTests(unittest.TestCase):
             )
         self.assertFalse(results[0].safe_mode)
         self.assertFalse(results[1].safe_mode)
-        self.assertTrue(results[2].safe_mode)
-        self.assertEqual(results[2].reason, "frozen_readings")
+        self.assertFalse(results[2].safe_mode)
+        self.assertTrue(results[2].degraded_mode)
+        self.assertIn("Water_pH", results[2].faulted_features)
 
     def test_missing_or_out_of_range_sensor_enters_safe_mode(self) -> None:
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -231,6 +339,32 @@ class SafetyControllerTests(unittest.TestCase):
         self.assertTrue(violates_water_limits(-15.1, "Vegetative/Tillering"))
         self.assertTrue(violates_water_limits(5.1, "Vegetative/Tillering"))
         self.assertEqual(one_hour_depth(2.0, True), 3.0)
+
+    def test_interlock_selects_lower_violation_when_no_action_is_fully_safe(self) -> None:
+        reading = sample_reading()
+        reading["Crop_Growth_Stage"] = "Reproductive/Flowering"
+        reading["Water_Table_Depth_cm"] = -2.0
+
+        self.assertTrue(safety_interlock(False, reading))
+
+    def test_interlock_honors_available_safe_action_across_depth_range(self) -> None:
+        for stage in (
+            "Transplanting",
+            "Vegetative/Tillering",
+            "Reproductive/Flowering",
+            "Ripening/Maturation",
+        ):
+            for depth in np.linspace(-20.0, 10.0, 301):
+                reading = sample_reading()
+                reading["Crop_Growth_Stage"] = stage
+                reading["Water_Table_Depth_cm"] = depth
+                selected = safety_interlock(False, reading)
+                selected_projection = one_hour_depth(depth, selected)
+                other_projection = one_hour_depth(depth, not selected)
+                if not violates_water_limits(other_projection, stage):
+                    self.assertFalse(
+                        violates_water_limits(selected_projection, stage)
+                    )
 
 
 if __name__ == "__main__":

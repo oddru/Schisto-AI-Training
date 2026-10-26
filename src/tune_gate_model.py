@@ -20,8 +20,9 @@ from src.chapter3_experiments import (
     TARGET,
     build_model,
     classification_metrics,
-    corrupt_features,
+    corrupt_features_by_channel,
     evaluate_actuation,
+    evaluate_feature_fault_scopes,
     summarize_dataset,
 )
 from src.generate_philippines_rice_paddy_awd_dataset import (
@@ -271,7 +272,7 @@ def run_tuning_experiment(
                     + level_index * 100
                     + repeat
                 )
-                corrupted, fault_mask = corrupt_features(
+                corrupted, fault_mask = corrupt_features_by_channel(
                     x_test,
                     fault_type,
                     level,
@@ -345,6 +346,12 @@ def run_tuning_experiment(
         "controlled_boundary_violations",
         "controlled_boundary_violation_rate",
         "false_negative_gate_actions",
+        "critical_fault_rows",
+        "degraded_mode_rows",
+        "degraded_mode_rate",
+        "model_policy_comparisons",
+        "model_policy_disagreements",
+        "model_policy_disagreement_rate",
         "safe_mode_rows",
         "safe_mode_rate",
         "safe_mode_open_commands",
@@ -371,6 +378,11 @@ def run_tuning_experiment(
         output_dir / "actuation_safety_summary.csv",
         index=False,
     )
+    evaluate_feature_fault_scopes(
+        x_test.assign(**{TARGET: y_test.to_numpy()}),
+        test_data[FEATURES + [TARGET]],
+        tuned_predictions,
+    ).to_csv(output_dir / "feature_fault_scope_safety.csv", index=False)
     pd.DataFrame(clean_safety_rows).to_csv(
         output_dir / "clean_baseline_safety_comparison.csv",
         index=False,
@@ -390,12 +402,25 @@ def run_tuning_experiment(
         "threshold_selection_metric": "positive-class F2 (beta=2)",
         "locked_test_used_for_tuning": False,
         "model": "400-tree RandomForestClassifier",
+        "controller_authority": (
+            "The configured synthetic AWD policy controls valid readings; "
+            "the Random Forest action is advisory only."
+        ),
+        "awd_policy": (
+            "During flowering, request open below 2 cm; otherwise request open "
+            "at or below -15 cm or at soil moisture at or below 25%."
+        ),
         "random_state": RANDOM_STATE,
         "same_generator_assumptions_across_seeds": True,
         "robustness_repeats": repeats,
         "fallback_fault_mask": (
-            "Oracle injection mask; used to evaluate fallback behavior, "
-            "not a validated fault detector."
+            "Row-by-channel oracle injection mask; evaluates conditional controller "
+            "response and is not a validated field fault detector."
+        ),
+        "conditional_fault_policy": (
+            "Water depth is critical for every stage. Soil moisture is critical "
+            "outside flowering; other measured-channel faults allow the explicit "
+            "AWD rule to continue in degraded mode."
         ),
         "generalization_scope": (
             "Unseen random realizations from the same synthetic generator; "
@@ -429,6 +454,7 @@ def run_tuning_experiment(
         "test_comparison": output_dir / "locked_test_model_comparison.csv",
         "robustness": output_dir / "robustness_summary.csv",
         "safety": output_dir / "actuation_safety_summary.csv",
+        "feature_fault_scope_safety": output_dir / "feature_fault_scope_safety.csv",
         "assumptions": output_dir / "tuning_assumptions.json",
         "model": output_dir / "gate_model_tuned.joblib",
         "figures": output_dir / "Figure_3_2_validation_thresholds.png",
@@ -576,7 +602,7 @@ def plot_robustness_and_safety(
         axis.set_xlabel("Corruption intensity (%)")
         axis.set_ylabel("Projected boundary violations (%)")
     axes[0].set_title("Direct model actuation")
-    axes[1].set_title("Interlock and fallback")
+    axes[1].set_title("AWD policy, interlock, and fallback")
     axes[1].legend(fontsize=7)
     figure.savefig(output_dir / "Figure_3_5_awd_safety.png", dpi=200)
     plt.close(figure)

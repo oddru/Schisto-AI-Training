@@ -100,6 +100,27 @@ def calculate_inundation_duration(water_levels: np.ndarray) -> np.ndarray:
     return durations
 
 
+def awd_policy_actions(
+    crop_stages: np.ndarray,
+    water_levels: np.ndarray,
+    soil_moisture: np.ndarray,
+) -> np.ndarray:
+    """Apply the configured synthetic gate-action policy to aligned inputs."""
+    crop_stages = np.asarray(crop_stages)
+    water_levels = np.asarray(water_levels, dtype=float)
+    soil_moisture = np.asarray(soil_moisture, dtype=float)
+    if not (
+        crop_stages.shape == water_levels.shape == soil_moisture.shape
+    ):
+        raise ValueError("Crop stages, water levels, and moisture must have matching shapes.")
+
+    flowering = crop_stages == "Reproductive/Flowering"
+    return (
+        (flowering & (water_levels < 2.0))
+        | (~flowering & ((water_levels <= AWD_DRAWDOWN_CM) | (soil_moisture <= 25.0)))
+    )
+
+
 def generate_dataset(
     start: str = "2024-01-01",
     periods: int = 4320,
@@ -186,11 +207,7 @@ def generate_dataset(
     )
 
     # Open means reflood/actuate the inlet. Flowering safety takes precedence.
-    gate_action = (
-        ((stages == "Reproductive/Flowering") & (water_level < 2.0))
-        | ((stages != "Reproductive/Flowering") & (water_level <= AWD_DRAWDOWN_CM))
-        | ((stages != "Reproductive/Flowering") & (moisture <= 25.0))
-    ).astype(int)
+    gate_action = awd_policy_actions(stages, water_level, moisture).astype(int)
 
     return pd.DataFrame(
         {

@@ -9,6 +9,11 @@ Random Forest. `requested_open` is supplied as a test input over the serial
 monitor. Sensor readings are also supplied as test data; no physical sensor,
 gate, farm, or field-calibrated actuator is modeled.
 
+This standalone firmware currently applies the injected request through its
+interlock; it does not yet implement the Python simulator's rule-driven AWD
+command policy. Results from the two controller implementations should not be
+treated as equivalent.
+
 ## Open and run in VS Code
 
 1. Install the PlatformIO IDE and Wokwi for VS Code extensions.
