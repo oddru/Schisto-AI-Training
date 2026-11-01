@@ -2,9 +2,9 @@
 
 # RESULTS AND DISCUSSION
 
-This chapter reports the study's results in relation to SOP 1–SOP 6: dataset and model performance, controlled sensor-fault stress tests, projected AWD boundary behavior, controller software checks, and a staged quality-assurance plan. The study's principal engineering contribution is a reproducible Python prototype that separates advisory machine-learning predictions from an explicit AWD policy, tests channel-aware fault routing, and measures one-hour boundary projections under documented assumptions.
+This chapter presents the results in relation to SOP 1–SOP 6: dataset and model performance, controlled sensor-fault stress tests, projected AWD boundary behavior, controller software checks, and a staged quality-assurance plan. The study's engineering contribution is a reproducible Python prototype that keeps the Random Forest advisory separate from an explicit AWD policy, routes faults according to the policy's input requirements, and compares projected boundary outcomes under documented assumptions. The chapter also reports two exploratory external-data analyses and distinguishes them from the primary model evaluation.
 
-The results are strongest as software and simulation evidence. The active training and test labels come from configured rules; injected faults are controlled perturbations; and projected water-depth changes use simulated actuator rates. A separate audit now describes the user-supplied irrigation sensor/relay logs without using them for model training or scoring. Together, these outputs clarify what the prototype does, identify the conditions that need further engineering work, and provide repeatable tests for the next validation stage. They do not estimate farm effectiveness, ecological or epidemiological outcomes, or physical ESP32 performance.
+The evidence is organized by what each evaluation can establish. The generated benchmark measures model behavior against its rule-derived target; controlled perturbations compare responses to specified fault profiles; and one-hour projections compare controller paths under simulated actuator rates. These results provide a repeatable basis for software testing and identify practical next steps for verification. Field effectiveness, ecological or epidemiological outcomes, and physical ESP32 performance require separate measurements and are not outcomes of the present experiments.
 
 ## 3.1 Baseline Dataset Profile and Predictive Performance (SOP 1 and SOP 2)
 
@@ -79,19 +79,16 @@ The selected validation configuration was positive-class weight 8 and probabilit
 
 The selected and default models produced identical predictions on locked seed 47. Both achieved 99.88% accuracy, 100.00% precision, and 93.42% recall (71 true positives and 5 false negatives among 76 positive records), as shown in Table 3.5 and Figure 3.3. Thus, the selection procedure improved the validation operating point, but did not demonstrate an improvement over the balanced default on this particular locked test. Reporting this comparison avoids overstating the effect of tuning.
 
-**Table 3.5. Locked-test performance after validation-only selection**
+**Table 3.5. Validation and locked-test model comparison**
 
-| Metric | Balanced model, threshold 0.50 | Selected model, threshold 0.51 |
-|---|---:|---:|
-| Accuracy | 99.88% | 99.88% |
-| Precision | 100.00% | 100.00% |
-| Recall | 93.42% | 93.42% |
-| F1-score | 96.60% | 96.60% |
-| F2-score | 94.67% | 94.67% |
-| True negatives | 4,244 | 4,244 |
-| False positives | 0 | 0 |
-| False negatives | 5 | 5 |
-| True positives | 71 | 71 |
+| Evaluation set | Configuration | Accuracy | Precision | Recall | F1 | F2 | TP / FN | TN / FP |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Validation, seed 46 | Balanced, threshold 0.50 | 99.93% | 98.10% | 99.04% | 98.56% | 98.85% | 103 / 1 | 4,214 / 2 |
+| Validation, seed 46 | Positive weight 8, threshold 0.51 | 99.98% | 99.05% | 100.00% | 99.52% | 99.81% | 104 / 0 | 4,215 / 1 |
+| Locked test, seed 47 | Balanced, threshold 0.50 | 99.88% | 100.00% | 93.42% | 96.60% | 94.67% | 71 / 5 | 4,244 / 0 |
+| Locked test, seed 47 | Positive weight 8, threshold 0.51 | 99.88% | 100.00% | 93.42% | 96.60% | 94.67% | 71 / 5 | 4,244 / 0 |
+
+On validation, selection raised recall from 99.04% to 100.00% while reducing false positives from two to one; F1 and F2 also increased. On the locked test, both configurations made the same predictions, detecting 71 of 76 positive actions with no false positives. This comparison shows that the validation-based procedure selected a strong operating point on its selection data and that the observed gain did not carry over as a difference from the default on this test. It is a transparent test of the selection process under the generator, not evidence of performance on independently collected farm data.
 
 ![Figure 3.3. Balanced default and validation-selected models on the locked synthetic test](reports/chapter3_tuning/Figure_3_3_locked_test_comparison.png)
 
@@ -132,75 +129,115 @@ The validation-selected model (positive-class weight 8, probability threshold 0.
 
 ![Figure 3.4. Positive-class F1-score under simulated sensor faults; shading indicates one standard deviation across trials](reports/chapter3_tuning/Figure_3_4_robustness_curves.png)
 
-The four profiles show different effects on the two action classes. Gaussian noise progressively lowers precision and F1 while recall remains higher across the tested levels. Impulse spikes preserve more recall but reduce precision; at 30%, mean precision is 9.46%. Sensor freezing has high variability in some conditions, including a mean F1 of 51.37% (SD 30.42 percentage points) at 20%. Drift most strongly reduces detection of positive actions: recall is 27.63% at 5%, 9.21% at 10%, and 1.32% at 30%; corresponding F1 scores are 43.30%, 16.87%, and 2.60%.
+The results separate into distinct response patterns. With Gaussian noise, mean F1 declined from 80.33% at 5% intensity to 31.55% at 30%, alongside lower precision. Impulse spikes retained recall above 81% across the tested range, while precision fell from 41.54% to 9.46%, indicating an increasing false-positive burden in this setup. Drift preserved 100% precision but recall decreased from 27.63% at 5% to 1.32% at 30%; the model therefore missed a larger share of positive actions as the simulated drift increased. Freezing retained a mean recall between 74.47% and 90.79%, but results varied substantially at 20–30% intensity; for example, F1 was 51.37% ± 30.42 percentage points at 20%.
 
-The curves provide a comparative stress-test profile for this model and generator. Drift is associated with missed positive actions despite high precision; impulse spikes are associated with more false positive predictions; and freezing has variable results across repeats. These observations motivate testing separate detection checks for drift, transients, and repeated readings. The injected percentages are experimental settings, not calibrated sensor-error tolerances or field operating thresholds.
+Figure 3.4 and Table 3.6 complement one another: the figure makes the F1 trends visible, while the table reports precision and recall alongside the mean and standard deviation for every tested intensity. Together, they characterize how this trained model responds to these specific perturbations and suggest distinct bench-test questions for drift, transient spikes, and repeated readings. The percentages are controlled injection settings, not measured sensor-error tolerances or recommended field alert thresholds.
 
 ## 3.3 Projected AWD Boundary Outcomes (SOP 4)
 
 The boundary experiment applies the study's configured AWD limits: outside flowering, water depth is compared with -15 cm and +5 cm boundaries; during flowering, it is compared with 0 cm and +5 cm boundaries. In the one-hour projection, an open gate increases depth by 1.0 cm and a closed gate decreases it by 0.5 cm. These rates are simulation assumptions, not measured actuator response. The direct projection uses Random Forest actions; the policy-controlled projection uses the configured rule and one-hour interlock.
 
-The tuned model's fault-free locked test produced 59 projected boundary violations across 4,320 records (1.37%). The policy-controlled projection, including the one-step interlock and safe-mode behavior, produced 9 (0.21%). Under each injected fault, ten trials measured the average direct model and policy-controlled violation counts. Table 3.7 shows selected levels; full per-level results are in the experiment output directory.
+The fault-free locked test produced 59 projected boundary violations across 4,320 records (1.37%) for direct Random Forest actions and 9 (0.21%) for the policy-controlled path. The ten-trial fault tests show that this difference depends on the injected fault profile: under impulse spikes and freezing, the policy-controlled path had fewer projected violations on average at the tested levels; under Gaussian noise and drift, critical-input safe mode produced 120 violations (2.78%) in each trial. The complete results in Table 3.7 and the trend lines in Figure 3.5 make both the clean comparison and the fault-dependent behavior visible.
 
-**Table 3.7. Selected projected AWD boundary violation results**
+**Table 3.7. Projected AWD boundary violations across tested fault intensities**
 
-| Fault profile | Intensity | Direct model violations (mean records) | Direct rate | Policy-controlled violations (mean records) | Controlled rate |
-|---|---:|---:|---:|---:|---:|
-| Clean baseline | 0% | 59.0 | 1.37% | 9.0 | 0.21% |
-| Gaussian noise | 5% | 57.5 | 1.33% | 120.0 | 2.78% |
-| Gaussian noise | 30% | 68.8 | 1.59% | 120.0 | 2.78% |
-| Impulse spikes | 5% | 64.2 | 1.49% | 10.3 | 0.24% |
-| Impulse spikes | 30% | 88.5 | 2.05% | 16.4 | 0.38% |
-| Sensor drift | 5% | 101.0 | 2.34% | 120.0 | 2.78% |
-| Sensor drift | 30% | 119.0 | 2.75% | 120.0 | 2.78% |
-| Sensor freezing | 5% | 60.9 | 1.41% | 12.1 | 0.28% |
-| Sensor freezing | 30% | 120.4 | 2.79% | 40.5 | 0.94% |
+| Fault profile | Intensity | Direct model, mean violations ± SD | Policy-controlled, mean violations ± SD |
+|---|---:|---:|---:|
+| Clean baseline | 0% | 59.0 | 9.0 |
+| Gaussian noise | 5% | 57.5 ± 4.1 | 120.0 ± 0.0 |
+| Gaussian noise | 10% | 57.0 ± 2.9 | 120.0 ± 0.0 |
+| Gaussian noise | 15% | 57.2 ± 5.2 | 120.0 ± 0.0 |
+| Gaussian noise | 20% | 56.2 ± 4.8 | 120.0 ± 0.0 |
+| Gaussian noise | 25% | 63.2 ± 5.5 | 120.0 ± 0.0 |
+| Gaussian noise | 30% | 68.8 ± 6.6 | 120.0 ± 0.0 |
+| Impulse spikes | 5% | 64.2 ± 3.8 | 10.3 ± 0.8 |
+| Impulse spikes | 10% | 67.2 ± 2.9 | 12.3 ± 2.5 |
+| Impulse spikes | 15% | 73.1 ± 5.1 | 13.6 ± 2.5 |
+| Impulse spikes | 20% | 79.4 ± 7.5 | 13.6 ± 2.7 |
+| Impulse spikes | 25% | 84.2 ± 5.1 | 16.4 ± 2.7 |
+| Impulse spikes | 30% | 88.5 ± 5.8 | 16.4 ± 3.3 |
+| Sensor drift | 5% | 101.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor drift | 10% | 113.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor drift | 15% | 114.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor drift | 20% | 116.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor drift | 25% | 117.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor drift | 30% | 119.0 ± 0.0 | 120.0 ± 0.0 |
+| Sensor freezing | 5% | 60.9 ± 4.0 | 12.1 ± 6.5 |
+| Sensor freezing | 10% | 65.4 ± 5.3 | 21.5 ± 5.7 |
+| Sensor freezing | 15% | 67.7 ± 5.6 | 23.6 ± 7.0 |
+| Sensor freezing | 20% | 99.6 ± 44.0 | 31.2 ± 7.4 |
+| Sensor freezing | 25% | 90.1 ± 32.9 | 41.8 ± 7.7 |
+| Sensor freezing | 30% | 120.4 ± 47.5 | 40.5 ± 9.5 |
+
+*Each injected-fault result is the mean across ten trials, each evaluated over 4,320 records. The clean baseline is a single locked-test run. Counts are projected outcomes under the configured one-hour model, not observed field events.*
 
 ![Figure 3.5. Direct model and policy-controlled projected AWD boundary violations under simulated corruption](reports/chapter3_tuning/Figure_3_5_awd_safety.png)
 
 ![Figure 3.6. Mean positive-class precision and recall across sensor-fault intensity levels; shaded bands show one standard deviation across ten corruption trials. Dotted lines indicate clean-test reference levels.](reports/chapter3_tuning/Figure_3_6_fault_precision_recall.png)
 
-Figure 3.6 makes the fault-specific precision-recall trade-offs visible. Under drift, precision remains at 100% in these runs while recall falls sharply. Under impulse spikes, recall stays comparatively higher while precision declines. The profiles show why fault evaluation should report both missed positive actions and false positive predictions rather than relying on one aggregate accuracy value.
-
-The classifier stress test and the boundary projection answer different questions: the former measures predicted labels, while the latter estimates depth-boundary outcomes under the assumed one-hour response. Within the drift profile, recall falls to 27.63% at 5% and 9.21% at 10%, with 1.32% at 30%. These values identify tested conditions at which positive-action classification degrades in this setup. They are not universal breakpoints or field calibration tolerances.
+Figure 3.6 makes the fault-specific precision-recall trade-offs visible. Under drift, the model preserves precision in these runs while recall declines; under impulse spikes, recall remains comparatively higher while precision declines. Reading this figure alongside the projection results is useful because classification metrics and projected water-boundary outcomes answer different questions: one measures agreement with the generated action labels, and the other measures the simulated depth effect of selected actions under the assumed one-hour response.
 
 On clean locked-test inputs, the Random Forest and rule policy differed on 5 of 4,311 records compared by the controller. Under the one-hour simulation, the controlled projection had 9 boundary violations (0.21%), compared with 59 (1.37%) for direct model actions. The rule policy matches the generated labels because it encodes the same rule; this establishes implementation consistency, not independent agronomic validation.
 
-The channel-level assessment compares faults in inputs used by the rule with faults in other measured channels. In these single-channel oracle scenarios, one channel is flagged while its values remain nominal; the test measures routing behavior, not whether a real detector can identify the fault. In the locked test, a depth-only flag routed all 4,320 records to safe mode and produced 120 projected violations (2.78%). A soil-moisture-only flag produced 3,873 safe-mode rows and 447 degraded-mode rows, with 112 projected violations (2.59%); the configured rule uses moisture outside flowering. Flags limited to flow, pH, soil temperature, or vegetation permitted degraded policy operation on 4,311 rows. Nine rows entered safe mode because of the repeated-reading check, and the projection had 9 violations (0.21%). These are synthetic controller-routing results from `feature_fault_scope_safety.csv`, not fault-detector performance.
+On the locked test, the channel-level oracle scenarios demonstrate that routing can distinguish inputs used by the policy from channels that are not part of its rule. A depth-only flag routed all 4,320 records to safe mode and yielded 120 projected violations (2.78%); a soil-moisture-only flag yielded 112 (2.59%), with 3,873 safe-mode and 447 degraded-mode records. Flags limited to flow, pH, soil temperature, or vegetation allowed degraded policy operation on 4,311 records; nine records entered safe mode through the repeated-reading check, and the projection had nine violations (0.21%). These tests measure controller routing when a fault flag is supplied, not the ability of a detector to discover a real fault.
 
-In the combined Gaussian-noise and drift scenarios, the oracle fault masks include water depth and soil moisture, so all rows enter safe mode. Holding the initial closed command produces 120 projected violations (2.78%) in the locked-test simulation. Channel-aware routing allows the rule to continue when only a channel not used by the policy is flagged, but the critical-input case remains unresolved: the hold-last-command behavior does not keep every projected state within the configured limits. If neither candidate action can return a one-hour projection inside the bounds, the interlock selects the action with the smaller projected violation; it cannot guarantee a valid state when the starting point and assumed rate make that impossible.
+This comparison also identifies the next controller design question: how to select a site-appropriate response when a critical input is unavailable. In the tested combined critical-input scenarios, holding the initial closed command resulted in 120 projected violations (2.78%). This outcome is specific to the starting states, limits, and assumed actuator rates in the simulation. The interlock can compare candidate projections, but cannot ensure that a feasible action exists when neither candidate returns the projected depth within limits. These findings support continued implementation and bench testing of the routing and projection logic, together with a separately justified fallback procedure.
 
-The generator's habitat-risk criteria connect the engineering test to the study's environmental motivation by representing prolonged inundation and specified moisture, temperature, and pH ranges. The present experiments measure generated gate-action prediction and simulated AWD depth boundaries. They do not measure greenhouse-gas emissions, snail habitat or population change, or epidemiological response. Table 3.7 therefore reports projected water-depth outcomes, not ecological effects.
+The habitat-risk criteria represent configured environmental conditions relevant to the study motivation. The experiments report generated gate-action classification and projected water-depth outcomes; they do not measure greenhouse-gas emissions, snail abundance, habitat change, or epidemiological response. The boundary table should therefore be interpreted as a comparison within the stated simulation, not as measured ecological impact or field safety.
 
-## 3.4 Embedded Logic and Microcontroller Actuation Simulation (SOP 5)
+## 3.4 Controller Logic and Embedded Demonstrator Status (SOP 5)
 
 The controller separates three concerns: input validity, the rule used to request an action, and the interlock that evaluates a one-hour projected depth. Water depth is treated as critical at every crop stage; soil moisture is critical outside flowering because the configured rule uses it there. A fault in either critical input enters safe mode and holds the previous gate command. If only a channel not used by the policy is flagged, the rule can continue in degraded mode. The Random Forest supplies an advisory comparison and does not command the simulated gate. For valid rule inputs, the interlock rejects actions projected to cross a configured limit and selects the smaller projected violation if neither option remains within limits. Figure 3.7 summarizes this evaluation design, including the separate external-data audit.
 
 ![Figure 3.7. Evaluation and controller architecture, showing the advisory model, policy/interlock path, safe-mode route, and isolated external-data audit](reports/chapter3_tuning/Figure_3_7_evaluation_architecture.png)
 
-The clean and channel-isolated comparisons show how the implemented components behave under their test assumptions. On the locked synthetic test, policy-controlled projection reduced violations from 59 to 9 on clean inputs. Fault-routing results show continued degraded-mode operation for faults in noncritical channels, while critical-channel faults enter safe mode. Combined faults affecting critical readings still produce 120 projected violations because the current fallback holds the previous command. This result gives a concrete next engineering requirement: a site-specific fallback must be chosen and evaluated using verified sensor and hydraulic behavior; this simulation does not establish a safe universal fallback.
+The clean and channel-isolated comparisons demonstrate how the implemented components behave under their test assumptions. On the locked synthetic test, policy-controlled projection reduced violations from 59 to 9 on clean inputs. Fault-routing results show continued degraded-mode operation for faults in noncritical channels, while critical-channel faults enter safe mode. In the combined critical-input simulation, holding the previous command produced 120 projected violations. This provides a concrete next engineering task: evaluate a site-specific fallback using verified sensor and hydraulic behavior.
 
-Twenty controller/model tests passed, covering deterministic and channel-specific corruption, generated-seed consistency, policy/label consistency, threshold selection, predictor threshold handling, stale and invalid readings, critical and noncritical fault routing, repeated-value detection, advisory model behavior, and the one-hour interlock. Six additional tests exercise parsing, timestamp ordering, recent-value pairing, gap summaries, and read-only audit report generation for the external time series. The combined focused run passed all 26 tests. This verifies code behavior against the specified synthetic and parser test cases; it does not validate field rules or hardware.
+Twenty controller/model tests passed, covering deterministic and channel-specific corruption, generated-seed consistency, policy/label consistency, threshold selection, predictor threshold handling, stale and invalid readings, critical and noncritical fault routing, repeated-value detection, advisory model behavior, and the one-hour interlock. Six additional tests cover parsing, timestamp ordering, recent-value pairing, gap summaries, and read-only audit report generation for the external time series. The combined focused run passed all 26 tests, verifying the specified software behavior and audit cases.
 
-An initial PlatformIO/Wokwi project is available under `wokwi/`. The firmware scaffold demonstrates input checks, safe-mode state, and an interlock using serial-injected readings and virtual LEDs; the requested gate action is supplied as a test input. The firmware does not embed the Random Forest and does not yet implement the Python simulator's rule-based command policy. It has not been compiled or run in Wokwi. The evidence in this chapter is therefore Python software-in-the-loop evidence; embedded build, simulator, and hardware-in-the-loop results remain future validation steps.
+The `wokwi/` PlatformIO project provides a firmware scaffold for the next embedded verification stage. It demonstrates input checks, safe-mode state, and an interlock using serial-injected readings and virtual LEDs; the requested gate action is supplied as a test input. The chapter's verified controller results come from Python software-in-the-loop tests. Compiling and running the firmware in Wokwi, followed by bench tests with physical sensors and actuators, are the next validation steps.
 
-The prototype is intended to explore sensor-informed gate support. No measurement of farmer exposure or unattended operation was made. Those outcomes depend on hardware integration, reliable communications, actuator safeguards, manual override, and maintenance procedures.
+The prototype explores sensor-informed gate support. Operator workflow and unattended operation are part of later evaluation stages that depend on hardware integration, reliable communications, actuator safeguards, manual override, and maintenance procedures.
 
-### 3.4.1 Exploratory audit of the supplied irrigation-control logs
+## 3.5 Supplementary External-Data Analyses
 
-To make use of the additional material without overstating what it can establish, the three user-supplied time series were audited separately from model training and evaluation. The logs contain 4,293 moisture records, 17,411 flow-meter records, and 17,427 binary relay records from July 12 to September 16, 2022. The relay stream contains 118 adjacent-record state changes. A preceding moisture reading no more than 30 minutes old was available for 17,179 relay records (98.6%). The flow-meter values are monotonic in the supplied file; that pattern alone does not confirm whether they are cumulative or establish their units.
+### 3.5.1 Exploratory audit of the supplied irrigation-control logs
+
+A separate quality audit examined the three supplied time series without using them for model training or evaluation. The logs contain 4,293 moisture records, 17,411 flow-meter records, and 17,427 binary relay records from July 12 to September 16, 2022. The relay stream contains 118 adjacent-record state changes. A preceding moisture reading no more than 30 minutes old was available for 17,179 relay records (98.6%). The flow-meter values are monotonic in the supplied file; that pattern alone does not confirm whether they are cumulative or establish their units.
 
 All three streams contain long gaps. Using reference intervals inferred from the observed cadence (approximately 20 minutes for moisture and 5 minutes for flow and relay; not specified in source metadata), the audit counted 122, 144, and 138 gaps respectively that exceeded 1.5 times those references. The longest gaps were approximately 63 hours. Figure 3.8 presents stream counts, typical intervals, gap counts, and descriptive moisture ranges paired with recorded relay values.
 
 ![Figure 3.8. Record counts, observed sampling intervals, long gaps, and moisture summaries by recorded relay value in the user-supplied logs](reports/chapter3_tuning/Figure_3_8_external_data_audit.png)
 
-These observations show that the logs can support a preliminary time-series quality and alignment review. They are not model validation results: the files do not provide the current classifier's required feature set, and their source, site/crop context, measurement units, relay-state meaning, and flow-meter semantics have not been verified. Moisture summaries by recorded relay value are descriptive associations only and must not be interpreted as causal effects, control thresholds, or agronomic safety evidence. The separate audit outputs are in `reports/external_irrigation/`; they can be regenerated with `python -m src.evaluate_external_irrigation_data`.
+These findings provide preliminary time-series quality and alignment summaries. The logs do not contain the current classifier's required feature set, and their source, site/crop context, measurement units, relay-state meaning, and flow-meter semantics remain unverified. Moisture summaries by recorded relay value are descriptive associations, useful for data review but not for causal conclusions, control thresholds, or agronomic safety claims. The separate audit outputs are in `reports/external_irrigation/`; they can be regenerated with `python -m src.evaluate_external_irrigation_data`.
 
-## 3.5 CRISP-ML(Q) Quality Assurance and Staged Validation Plan (SOP 6)
+### 3.5.2 Exploratory external soil-moisture forecasting benchmark
 
-The controlled fault levels provide repeatable test conditions for quality assurance. They do not establish field sensor tolerances or a recalibration schedule: injected percentages are perturbation settings, not measured error histories. The following table translates observed stress-test patterns into candidate bench-test questions and safeguards for future validation.
+As a separate exploratory analysis, one-day-ahead Water Content forecasts were evaluated using the public [it4lia/soil_moisture_dataset](https://huggingface.co/datasets/it4lia/soil_moisture_dataset), produced by Fondazione Bruno Kessler's OpenIoT research unit in Trentino, Italy. This benchmark is distinct from the gate-action classifier and controller: it uses a continuous moisture target, not `AWD_Gate_Action`, and its records were not used to train or evaluate the project's Random Forest. Exact one-, two-, and seven-day lag readings and annual day-of-year features were used; each consortium was split chronologically, and XGBoost was compared with one-day persistence and a seven-day-naive baseline. The table reports the held-out test results. MAE and RMSE are in the dataset's reported value scale.
 
-**Table 3.8. TFCST evidence and candidate QA actions for further testing**
+**Table 3.8. One-day-ahead external soil-moisture forecast performance**
+
+| Test cohort | Model / baseline | Test records | MAE | RMSE | R-squared |
+|---|---|---:|---:|---:|---:|
+| Consortium 0 | XGBoost | 760 | 0.194 | 0.692 | 0.951 |
+| Consortium 0 | Persistence (1 day) | 760 | 0.172 | 0.768 | 0.940 |
+| Consortium 0 | Seven-day naive | 760 | 0.425 | 1.134 | 0.869 |
+| Consortium 2 | XGBoost | 576 | 0.655 | 1.250 | 0.967 |
+| Consortium 2 | Persistence (1 day) | 576 | 0.517 | 1.102 | 0.974 |
+| Consortium 2 | Seven-day naive | 576 | 1.949 | 2.775 | 0.835 |
+| Pooled test records | XGBoost | 1,336 | 0.393 | 0.973 | — |
+| Pooled test records | Persistence (1 day) | 1,336 | 0.321 | 0.927 | — |
+| Pooled test records | Seven-day naive | 1,336 | 1.082 | 2.013 | — |
+
+Performance was mixed by cohort. XGBoost had a lower RMSE than persistence in consortium 0, but higher MAE; in consortium 2 it was worse than persistence on both MAE and RMSE. Across the pooled test records, persistence had lower MAE and RMSE than XGBoost. Pooled R-squared is omitted because between-consortium differences in measurement levels can make it misleading. The comparison therefore does not show a consistent advantage for XGBoost, and it does not demonstrate improved gate decisions, controller safety, or transfer to Philippine rice paddies. It is an external forecasting benchmark only, not validation of the study's primary model or AWD policy.
+
+The dataset card identifies the source data as CC BY-NC-ND 4.0. The dataset files and model weights are not reproduced in this chapter; confirm institutional requirements for attribution and license handling before circulating the thesis. Experiment details and reproducibility instructions are in `experiments/irrigation_forecasting/README.md`; the locally generated metrics are in `experiments/irrigation_forecasting/outputs/forecast_metrics.csv`.
+
+## 3.6 CRISP-ML(Q) Quality Assurance and Staged Validation Plan (SOP 6)
+
+The controlled fault levels provide repeatable inputs for the next quality-assurance stage. Table 3.9 translates the observed response patterns into candidate bench checks and safeguards. The injection percentages support reproducible comparisons in this simulator; defining field tolerances or a recalibration schedule requires measured sensor error against a calibrated reference.
+
+**Table 3.9. TFCST evidence and candidate QA actions for further testing**
 
 | Condition / measured evidence | QA test focus | Candidate engineering response |
 |---|---|---|
@@ -212,13 +249,13 @@ The controlled fault levels provide repeatable test conditions for quality assur
 | Clean policy-controlled projection: 9 violations versus 59 for direct model actions | Preserve as a regression comparison under current synthetic assumptions | Keep the policy/interlock comparison, and separately verify policy thresholds and actuator response with justified references. |
 | Stale, missing, invalid, or repeated readings | Exercise checks for readings older than 3,600 seconds, invalid values, external fault flags, and three identical consecutive numeric readings | Confirm the diagnostic route and operator procedure; separately determine whether the held command is appropriate for the site. |
 
-The percentages in Table 3.8 describe the synthetic fault injectors; they are not recommended field alert thresholds. The controller currently implements input-validity checks, externally supplied channel-fault flags, and repeated-value detection. It does not yet provide a validated field detector for drift or noise. Calibration intervals and fallback actions require measured sensor residuals, reference instrumentation, and local operational review.
+The percentages in Table 3.6 describe the synthetic fault injectors; they are not recommended field alert thresholds. Implemented controller checks include input validity, externally supplied channel-fault flags, and repeated-value detection. Drift and noise detection, calibration intervals, and fallback actions are candidates for evaluation using measured sensor residuals, reference instrumentation, and local operational review.
 
 The following protocols translate the measured behavior into an engineering QA workflow:
 
 1. **Repeat the measured stress conditions.** Use the 5% and 10% drift settings as reproducible synthetic test cases, then measure the corresponding error in engineering units with calibrated references before defining any field alarm thresholds.
 2. **Use fault-specific measures.** Report precision and recall together; the simulations show that drift and impulse faults affect them differently. Test range checks, transient handling, and temporal consistency as separate controller functions.
-3. **Exercise invalid and stale input paths.** Test readings older than 3,600 seconds, missing or invalid values, external fault flags, and three consecutive identical numeric readings. Confirm that diagnostics and operator responses are clear; the existing hold-last-command behavior is not yet a site-approved safe fallback.
+3. **Exercise invalid and stale input paths.** Test readings older than 3,600 seconds, missing or invalid values, external fault flags, and three consecutive identical numeric readings. Confirm that diagnostics are clear and validate the site-specific operator response for each condition, including whether holding the last command is appropriate.
 4. **Maintain the advisory/policy separation.** Continue to treat the Random Forest as advisory in the controller prototype. Assess policy thresholds and interlock behavior separately using independently justified agronomic criteria and measured actuator dynamics.
 5. **Evaluate positive-class performance and projected outcomes.** For every model or sensor configuration, report support, recall, precision, F1/F2, false positives, false negatives, and projected boundary outcomes. Record the split and number of positive cases to make comparisons interpretable.
 6. **Use measured history for maintenance planning.** Estimate sensor residuals against reference instruments over time before proposing recalibration intervals. The present synthetic stress percentages cannot establish a service calendar.
@@ -230,12 +267,16 @@ Within the configured habitat rules, High risk is assigned using prolonged inund
 
 ## Chapter Summary
 
-The study delivered a reproducible Python prototype and quantified its behavior under generated data and controlled sensor perturbations. On the chronological holdout, the baseline achieved 98.50% accuracy and 40.00% recall across 864 records. Validation-based selection chose positive-class weight 8 and threshold 0.51; on the locked seed-47 test, this model and the balanced default produced identical predictions: 99.88% accuracy, 93.42% recall, and 100% precision, with 71/76 positive actions detected. The selection improved validation metrics but not the locked-test result relative to the default.
+For SOP 1 and SOP 2, the chapter profiles the generated dataset and establishes model benchmarks, then documents validation-only selection of a positive-class weight and threshold. The selected operating point improved precision, recall, F1, and F2 on the validation set. On the locked test, it matched the balanced default, with 71 of 76 positive actions detected, 100% precision, and 93.42% recall. This is a clear, reproducible comparison of model selection under the project's generated data.
 
-Across the four synthetic fault profiles, drift most strongly reduced recall, impulse spikes reduced precision, and freezing produced variable results. Under the one-hour projection, policy-controlled actions reduced clean-test boundary violations from 59 to 9; single-channel routing tests also showed that noncritical channel flags can permit degraded policy operation. In contrast, combined fault scenarios affecting critical inputs entered safe mode and produced 120 projected violations under the hold-last-command behavior. This gives the next controller iteration a specific requirement: fallback selection must be justified with site-specific evidence, not inferred from the current simulations.
+For SOP 3, the ten-trial fault tests provide a response profile across four corruption types and six intensities. Drift primarily reduced recall, impulse spikes primarily reduced precision, and freezing produced the greatest variability at higher tested intensities. For SOP 4, the one-hour simulation recorded 59 direct-model versus 9 policy-controlled boundary violations on clean inputs. The full fault table shows that this comparison varies by fault type: policy control reduced projected violations under spike and freezing tests, while critical-input safe mode yielded 120 projected violations under the tested Gaussian-noise and drift conditions. These results identify a specific next design and test task: evaluate a site-appropriate response to unavailable critical readings using measured sensor and hydraulic behavior.
 
-The external irrigation logs were audited separately: 98.6% of relay records had a preceding moisture reading within 30 minutes, but the streams contain long gaps and lack verified source and channel definitions. They were not used for training or model scoring. The focused run passed 26 tests across controller/model behavior and audit parsing. The results establish a testable software prototype, reusable figures and reports, and a concrete staged validation plan. They support further engineering work without implying that field safety, agronomic performance, or public-health impact has already been demonstrated.
+For SOP 5, software tests and the simulation document the advisory-model/policy separation, channel-aware routing, and interlock behavior. The embedded scaffold defines a next step for firmware verification and bench testing.
+
+Separately, the supplementary external-data analyses provide data-quality and forecasting context. In the irrigation-log audit, 98.6% of relay records had a preceding moisture reading within 30 minutes; the streams also contain long gaps and have unverified source and channel definitions. They were not used for model training or scoring. In the Trentino benchmark, persistence had lower pooled MAE and RMSE than XGBoost on 1,336 held-out soil-moisture records. Neither external analysis evaluates the gate-action model or establishes AWD control performance.
+
+For SOP 6, the measured patterns are translated into candidate QA checks and a staged path from software verification to calibrated bench testing and supervised evaluation. The combined focused controller/model and audit run passed 26 tests; the isolated forecasting suite passed two additional tests. Together, the chapter provides reproducible results, comparisons, figures, and concrete follow-on tests. Its findings support the prototype's software and simulation contributions while keeping field, agronomic, ecological, and public-health claims tied to evidence that remains to be collected.
 
 ## Reproducibility
 
-The chronological experiment can be rerun using `python src/chapter3_experiments.py --repeats 10`; its outputs are under `reports/chapter3_experiments/`. The validation-tuned experiment can be rerun using `python -m src.tune_gate_model --repeats 10`; its model, tables, and figures are under `reports/chapter3_tuning/`. The tuning procedure uses generated seeds 42–45 for training, seed 46 for validation, and seed 47 for the locked test. Sensor corruption is tested at 5–30% in 5-point increments with ten repeats per condition. The external log audit is regenerated with `python -m src.evaluate_external_irrigation_data`. Supplementary figures are generated with `python -m src.generate_chapter3_figures` after the audit outputs exist. One-hour actuator response and AWD boundaries are the configured assumptions recorded with the experiment outputs. The ESP32/Wokwi scaffold is in `wokwi/`; compilation and simulation have not been verified.
+The chronological experiment can be rerun using `python src/chapter3_experiments.py --repeats 10`; its outputs are under `reports/chapter3_experiments/`. The validation-tuned experiment can be rerun using `python -m src.tune_gate_model --repeats 10`; its model, tables, and figures are under `reports/chapter3_tuning/`. The tuning procedure uses generated seeds 42–45 for training, seed 46 for validation, and seed 47 for the locked test. Sensor corruption is tested at 5–30% in 5-point increments with ten repeats per condition. The external log audit is regenerated with `python -m src.evaluate_external_irrigation_data`. The separate soil-moisture benchmark can be rerun using `python -m experiments.irrigation_forecasting.download_data` followed by `python -m experiments.irrigation_forecasting.evaluate` in its dedicated environment; see `experiments/irrigation_forecasting/README.md`. Supplementary figures are generated with `python -m src.generate_chapter3_figures` after the audit outputs exist. One-hour actuator response and AWD boundaries are the configured assumptions recorded with the experiment outputs. The ESP32/Wokwi scaffold is in `wokwi/`; embedded build and simulator runs are the next validation steps.
