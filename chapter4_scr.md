@@ -1,0 +1,61 @@
+# CHAPTER 4
+
+# SUMMARY, CONCLUSIONS, AND RECOMMENDATIONS
+
+This chapter summarizes the development and evaluation of the Rice Paddy Alternate Wetting and Drying (AWD) Monitoring and Snail Habitat Risk Management System. It presents conclusions drawn from the generated-data experiments, sensor-fault tests, controller simulations, software checks, and supplementary external-data analyses. Recommendations are directed toward strengthening the prototype through staged, measurable validation.
+
+## 4.1 Summary of the Study
+
+The study developed a reproducible Python prototype for exploring sensor-informed AWD gate support and rule-based snail-habitat risk classification. The prototype separates the Random Forest's advisory prediction from an explicit AWD policy and a one-hour interlock. This separation allows model predictions, policy actions, input-fault routing, and projected boundary outcomes to be examined as distinct parts of the system.
+
+The primary dataset contains 4,320 hourly records generated from configured assumptions. The `AWD_Gate_Action` target is rule-derived and imbalanced: 107 records (2.48%) represent open/reflood actions, while 4,213 (97.52%) represent close/maintain actions. The separate `Snail_Habitat_Risk` label is also generated from configured environmental criteria. The dataset provides a consistent basis for repeatable software experiments; it is not a set of field observations.
+
+An initial chronological baseline was evaluated on 864 held-out records, including 20 positive actions. It achieved 98.50% accuracy, 88.89% precision, 40.00% recall, and 55.17% F1-score. A later model-selection experiment used generated seeds 42–45 for fitting, seed 46 for validation, and seed 47 as a locked test. Positive-class weight and probability threshold were selected using validation F2-score. The selected configuration used positive-class weight 8 and threshold 0.51. On validation, it achieved 100.00% recall, 99.05% precision, and 99.81% F2-score. On the locked test, it and the balanced default produced identical predictions: 99.88% accuracy, 100.00% precision, 93.42% recall, and 96.60% F1, detecting 71 of 76 positive actions.
+
+The selected model was evaluated under Gaussian noise, impulse spikes, sensor drift, and sensor freezing at six simulated intensities, with ten trials per condition. The tests showed distinct response patterns: drift reduced positive-action recall; impulse spikes reduced precision while retaining comparatively high recall; Gaussian noise reduced F1 as intensity increased; and freezing showed higher variability at some tested levels. These experiments characterize model behavior under controlled perturbations of the generated test data.
+
+The controller experiments compared direct model actions with the rule-based policy and interlock. On the clean locked test, the one-hour simulation recorded 59 projected boundary violations for direct model actions and 9 for policy-controlled actions. Results under fault injection depended on the fault type. In the tested Gaussian-noise and drift scenarios, critical-input safe mode produced 120 projected violations; under spike and freezing scenarios, the policy-controlled path produced fewer projected violations than the direct model at the evaluated intensities. Channel-level tests also exercised degraded-mode routing for faults in channels not used by the policy. All projected outcomes depend on the configured AWD limits and assumed actuator rates.
+
+Focused software tests evaluated model and controller behavior, fault routing, input checks, the interlock, and the external time-series audit. The controller/model and audit run passed 26 tests. The firmware scaffold in `wokwi/` describes a path toward embedded verification; its compilation and Wokwi execution have not yet been established in this study.
+
+Two supplementary analyses used external records without incorporating them into training or scoring of the primary gate-action model. The user-supplied irrigation logs were audited for timestamps, gaps, and moisture/relay alignment. A preceding moisture record within 30 minutes was available for 98.6% of relay records, but the source and measurement semantics require confirmation. Separately, a one-day-ahead soil-moisture forecast benchmark using records from Trentino, Italy compared XGBoost with simple baselines on 1,336 held-out records. Persistence had lower pooled MAE and RMSE than XGBoost. This external benchmark concerns moisture forecasting, not gate-action prediction or AWD control.
+
+## 4.2 Conclusions
+
+Based on the results and within the scope of the study, the following conclusions are drawn:
+
+1. **The generated dataset supports repeatable evaluation of the prototype.** Its hourly records, defined features, and rule-generated labels provide a consistent environment for comparing model configurations and testing controller logic. The resulting performance measures describe agreement with the configured rules and should be interpreted as synthetic-benchmark results.
+
+2. **Validation-based operating-point selection produced a strong validation result, while matching rather than exceeding the default on the locked test.** The selected positive-class weight and threshold improved validation precision, recall, F1, and F2. Both configurations made identical predictions on the locked test, detecting 71 of 76 positive actions. The study therefore demonstrates a reproducible selection and evaluation process, but not a locked-test performance gain from tuning.
+
+3. **The fault tests provide a differentiated robustness profile.** Drift primarily affected recall, impulse spikes primarily affected precision, Gaussian noise progressively reduced F1, and freezing introduced variability at higher tested intensities. These findings help identify which fault conditions and performance measures should be prioritized in subsequent testing.
+
+4. **The explicit policy and interlock reduced projected boundary violations on clean simulated inputs.** The clean-test comparison was 9 projected violations for the policy-controlled path versus 59 for direct model actions. Under injected faults, the results varied by fault profile, and critical-input safe mode did not keep every projected state within the configured limits. The experiments thus support the value of evaluating the policy and interlock separately, while identifying critical-input fallback behavior as an important next design task.
+
+5. **The software prototype's routing and advisory/policy separation were exercised through focused tests.** The results establish tested software behavior for the specified inputs and assumptions. They do not establish physical actuator performance, embedded execution, or an operationally approved field fallback.
+
+6. **The external-data analyses contribute supplementary context, not primary-model validation.** The irrigation logs support preliminary data-quality and alignment review, subject to provenance and semantic verification. In the separate Trentino forecasting benchmark, persistence outperformed XGBoost on pooled MAE and RMSE. Neither analysis demonstrates improvement to the gate-action classifier or validates AWD management in Philippine rice fields.
+
+7. **The study provides a structured engineering basis for further development.** Its reproducible benchmark, model comparisons, fault profiles, controller simulations, and staged testing recommendations can guide implementation and data collection. Claims about field effectiveness, snail populations, schistosomiasis transmission, or other ecological outcomes require dedicated empirical studies.
+
+## 4.3 Recommendations
+
+Based on the conclusions, the following actions are recommended:
+
+1. **Complete embedded verification in stages.** Compile the firmware scaffold and test it in Wokwi using documented input cases. Then conduct bench tests with calibrated sensors and the intended actuator, recording commanded and observed gate states, sensor readings, timing, interlock decisions, and manual interventions.
+
+2. **Define and test a site-specific critical-input fallback.** Consult the relevant agricultural and engineering stakeholders to specify responses to unavailable, stale, invalid, or fault-flagged water-depth and soil-moisture readings. Include manual override, communications loss, actuator failure, command-rate limits, and restart behavior. Test candidate responses against measured sensor and hydraulic behavior before considering operational use.
+
+3. **Collect representative field measurements before claiming field performance.** Gather time-stamped readings from relevant Philippine rice-paddy conditions, including crop stage, water depth, soil moisture, and verified gate state. Document sensor models, units, calibration, site context, missing intervals, and operating procedures. Use an evaluation period or site independent of model fitting and threshold selection.
+
+4. **Retain simple baselines and predefine evaluation criteria.** Compare future models with the explicit AWD rule and suitable simple predictors. Before evaluation, specify data splits, positive-action support, thresholds, and acceptance criteria. Report confusion matrices, precision, recall, F1/F2, boundary projections, and confidence or variability estimates; do not rely on accuracy alone for the rare positive action.
+
+5. **Ground fault tests in measured sensor behavior.** Use calibrated references and controlled bench experiments to express error in engineering units. Test fault detectors separately from oracle fault flags, and assess drift, noise, spikes, freezing, stale readings, and missing data across relevant sensor channels. Treat the current injection percentages as reproducibility settings rather than field tolerances.
+
+6. **Verify external-data provenance and permissions.** Confirm the origin, sensor definitions, units, relay semantics, and site context of the supplied irrigation logs before using them in comparative analyses. Review the Hugging Face dataset's license and institutional requirements before redistributing source data or derived results. Keep external forecasting analyses distinct from gate-action evaluation unless a justified and documented method links the tasks.
+
+7. **Evaluate ecological outcomes separately if they are part of the research objectives.** A future study of snail habitat or schistosomiasis-related outcomes should define appropriate field observations, sampling procedures, ethical and institutional approvals, and analysis methods. Rule-derived risk labels alone should not be treated as observed snail abundance, infection, or disease prevention.
+
+8. **Improve operational reporting for administrators and field staff.** Where an administrative dashboard is within project scope, provide clear record timestamps, crop-stage context, measured conditions, risk categories, gate-action definitions, data-quality status, and an audit trail of edits and decisions. Present risk and action indicators as decision support, with explanations and manual review rather than as an autonomous diagnosis or physical gate command.
+
+These recommendations follow a staged progression from software verification to calibrated bench testing, independently collected field data, and—if justified—supervised evaluation. At each stage, define measurable acceptance criteria and stop conditions before testing. This progression builds on the prototype's demonstrated software and simulation results while ensuring that later operational and ecological conclusions are supported by appropriate evidence.
