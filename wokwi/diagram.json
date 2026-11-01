@@ -51,6 +51,13 @@
       "top": 210,
       "left": 320,
       "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "gateServo",
+      "top": 190,
+      "left": 520,
+      "attrs": { "horn": "single", "hornColor": "#8b5a2b" }
     }
   ],
   "connections": [
@@ -62,7 +69,10 @@
     ["closedResistor:2", "esp:GND.1", "black", []],
     ["esp:21", "safeModeLed:A", "yellow", []],
     ["safeModeLed:C", "safeResistor:1", "yellow", []],
-    ["safeResistor:2", "esp:GND.1", "black", []]
+    ["safeResistor:2", "esp:GND.1", "black", []],
+    ["esp:23", "gateServo:PWM", "orange", []],
+    ["esp:VIN", "gateServo:V+", "red", []],
+    ["esp:GND.1", "gateServo:GND", "black", []]
   ],
   "serialMonitor": {
     "display": "always",

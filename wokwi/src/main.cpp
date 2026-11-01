@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ESP32Servo.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,9 @@ namespace {
 constexpr uint8_t kGateOpenPin = 18;
 constexpr uint8_t kGateClosedPin = 19;
 constexpr uint8_t kSafeModePin = 21;
+constexpr uint8_t kGateServoPin = 23;
+constexpr int kGateClosedAngle = 0;
+constexpr int kGateOpenAngle = 90;
 constexpr float kMinimumDepthCm = -20.0F;
 constexpr float kMaximumDepthCm = 10.0F;
 constexpr float kAwdMinimumDepthCm = -15.0F;
@@ -18,6 +22,8 @@ constexpr float kClosedDepthChangeCmPerHour = -0.5F;
 constexpr long kMaximumReadingAgeMs = 3600000L;
 constexpr size_t kLineCapacity = 128;
 constexpr uint8_t kMaximumTokens = 7;
+
+Servo gateServo;
 
 struct Reading {
   char stage[16];
@@ -40,6 +46,7 @@ void updateIndicators() {
   digitalWrite(kGateOpenPin, gateOpen ? HIGH : LOW);
   digitalWrite(kGateClosedPin, gateOpen ? LOW : HIGH);
   digitalWrite(kSafeModePin, safeMode ? HIGH : LOW);
+  gateServo.write(gateOpen ? kGateOpenAngle : kGateClosedAngle);
 }
 
 void enterSafeMode(const char *reason) {
@@ -234,6 +241,54 @@ void processLine(char *line) {
   }
 }
 
+void runDemoCommand(
+    const char *label,
+    const char *command,
+    bool expectedGateOpen,
+    bool expectedSafeMode) {
+  char line[kLineCapacity];
+  strncpy(line, command, sizeof(line) - 1);
+  line[sizeof(line) - 1] = '\0';
+
+  Serial.print("DEMO_CASE ");
+  Serial.print(label);
+  Serial.print(" command=\"");
+  Serial.print(command);
+  Serial.println("\"");
+  processLine(line);
+
+  const bool passed =
+      gateOpen == expectedGateOpen && safeMode == expectedSafeMode;
+  Serial.print("DEMO_CHECK ");
+  Serial.print(passed ? "PASS" : "FAIL");
+  Serial.print(" expected_gate=");
+  Serial.print(expectedGateOpen ? "OPEN" : "CLOSED");
+  Serial.print(" expected_safe=");
+  Serial.print(expectedSafeMode ? "1" : "0");
+  Serial.print(" actual_gate=");
+  Serial.print(gateOpen ? "OPEN" : "CLOSED");
+  Serial.print(" actual_safe=");
+  Serial.println(safeMode ? "1" : "0");
+  delay(800);
+}
+
+void runStartupDemo() {
+  Serial.println("DEMO_BEGIN startup_controller_checks");
+  runDemoCommand("reset", "RESET", false, false);
+  runDemoCommand("low_depth_requests_open", "SAMPLE VEG -15 1 0 0", true, false);
+  runDemoCommand("upper_limit_blocks_open", "SAMPLE VEG 4.5 1 0 0", false, false);
+  runDemoCommand("flowering_minimum", "SAMPLE FLOWER 0.2 0 0 0", true, false);
+  runDemoCommand("reset_before_stale_reading", "RESET", false, false);
+  runDemoCommand("stale_reading_safe_mode", "SAMPLE VEG -4 1 3600001 0", false, true);
+  runDemoCommand("reset_before_fault_flag", "RESET", false, false);
+  runDemoCommand("fault_flag_safe_mode", "SAMPLE VEG -4 1 0 1", false, true);
+  runDemoCommand("reset_before_freeze_check", "RESET", false, false);
+  runDemoCommand("freeze_sample_1", "SAMPLE VEG -4 0 0 0", false, false);
+  runDemoCommand("freeze_sample_2", "SAMPLE VEG -4 0 0 0", false, false);
+  runDemoCommand("freeze_sample_3_safe_mode", "SAMPLE VEG -4 0 0 0", false, true);
+  Serial.println("DEMO_END startup_controller_checks");
+}
+
 void readSerialLines() {
   while (Serial.available() > 0) {
     const char incoming = static_cast<char>(Serial.read());
@@ -266,8 +321,10 @@ void setup() {
   pinMode(kGateClosedPin, OUTPUT);
   pinMode(kSafeModePin, OUTPUT);
   Serial.begin(115200);
+  gateServo.attach(kGateServoPin);
   resetController();
   printHelp();
+  runStartupDemo();
 }
 
 void loop() {

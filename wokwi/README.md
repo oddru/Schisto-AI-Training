@@ -1,8 +1,10 @@
 # ESP32/Wokwi Controller Logic Demonstrator
 
 This project demonstrates the gate-control validity checks, safe-mode behavior,
-and one-hour AWD interlock on a virtual ESP32. The green, red, and yellow LEDs
-represent the requested gate state and safe-mode status.
+and one-hour AWD interlock on a virtual ESP32. A virtual servo represents a
+hinged gate flap: it moves to 0 degrees when closed and 90 degrees when open.
+The green and red LEDs indicate the gate state, and the yellow LED indicates
+safe mode.
 
 This is a controller-logic demonstrator, not an ESP32 implementation of the
 Random Forest. `requested_open` is supplied as a test input over the serial
@@ -12,7 +14,8 @@ gate, farm, or field-calibrated actuator is modeled.
 This standalone firmware currently applies the injected request through its
 interlock; it does not yet implement the Python simulator's rule-driven AWD
 command policy. Results from the two controller implementations should not be
-treated as equivalent.
+treated as equivalent. Servo angles are visual states for the simulation, not
+calibrated gate positions or a model of force, water flow, or actuator response.
 
 ## Open and run in VS Code
 
@@ -20,7 +23,9 @@ treated as equivalent.
 2. Open this `wokwi` directory as the VS Code workspace.
 3. Build the `esp32dev` PlatformIO environment.
 4. Start the Wokwi simulation from the Wokwi extension.
-5. Use the serial monitor at 115200 baud and send one command per line.
+5. On startup, the firmware automatically runs labeled controller checks and
+   prints each result to the serial output. No terminal input is required to
+   see the demonstration. Every check should print `DEMO_CHECK PASS`.
 
 The project uses Wokwi's documented `wokwi.toml` layout and expects PlatformIO
 to build `.pio/build/esp32dev/firmware.bin` and `firmware.elf`.
@@ -60,12 +65,22 @@ by 1.0 cm/hour and closing lowers it by 0.5 cm/hour. It rejects invalid stages,
 depths outside -20 to +10 cm, stale readings, and fault-flagged samples. Three
 consecutive identical depth samples trigger the simulated frozen-sensor check.
 This is a single-input demonstration of the project logic, not a complete
-multi-sensor fault detector.
+multi-sensor fault detector. The startup demonstration checks the normal
+interlock cases, stale and fault-flagged readings, and the repeated-reading
+freeze check. The simulation continues listening for optional serial commands
+after the startup checks finish.
+
+The startup checks pause briefly between cases so gate and LED states can be
+observed. The checks are a demonstration aid, not a substitute for the Python
+test suite or physical hardware-in-the-loop validation. For physical hardware,
+power a servo from a suitable external supply and connect its ground to the
+ESP32 ground; do not assume the ESP32 board can supply the servo current.
 
 ## Interpretation
 
-The LEDs and serial messages validate state transitions in the virtual firmware
-when a Wokwi run is performed. They do not provide measured hardware latency,
-physical actuator response, calibration evidence, or public-health outcomes.
-For thesis reporting, distinguish project implementation/build evidence from a
-completed Wokwi run and from physical hardware-in-the-loop results.
+The virtual servo, LEDs, and serial messages show state transitions in the
+firmware when a Wokwi run is performed. They do not provide measured hardware
+latency, physical actuator response, calibration evidence, or public-health
+outcomes. For thesis reporting, distinguish project implementation/build
+evidence from a completed Wokwi run and from physical hardware-in-the-loop
+results.

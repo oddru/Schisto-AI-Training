@@ -118,3 +118,7 @@ python -m src.evaluate_external_irrigation_data
 ```
 
 The audit writes aggregate stream-quality and relay/moisture co-observation summaries to `reports/external_irrigation/`. It does not train or evaluate the Random Forest because the external streams do not provide its required feature set, and channel meanings and provenance still require confirmation. Relay/moisture summaries are descriptive only, not causal or safety evidence. Keep this dataset separate from training unless its source, units, and field semantics are verified.
+
+### Optional external soil-moisture forecast
+
+`experiments/irrigation_forecasting/` contains a separate XGBoost forecast experiment using the `it4lia/soil_moisture_dataset` Water Content streams. It does not change the main model, controller, synthetic datasets, or Chapter 3 results. Setup, data attribution, license cautions, and run instructions are in that folder's README. Its data and outputs are git-ignored; do not treat forecasting scores as validation of gate actions or field safety.
