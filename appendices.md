@@ -1466,7 +1466,7 @@ if __name__ == "__main__":
 Source: `src/generate_chapter3_figures.py`
 
 ```python
-"""Generate supplementary Chapter 3 figures from saved experiment summaries."""
+"""Generate supplementary Chapter 2 and Chapter 3 figures from saved summaries."""
 
 from __future__ import annotations
 
@@ -1484,6 +1484,7 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = ROOT / "reports" / "chapter3_tuning"
+DEFAULT_CHAPTER2_OUTPUT_DIR = ROOT / "reports" / "chapter2_methodology"
 DEFAULT_AUDIT_DIR = ROOT / "reports" / "external_irrigation"
 
 
@@ -1537,7 +1538,7 @@ def plot_evaluation_architecture(output_path: Path) -> None:
     synthetic = "#dbeafe"
     controller = "#dcfce7"
     advisory = "#fef3c7"
-    external = "#f1f5f9"
+    metrics = "#f1f5f9"
     safe = "#fee2e2"
 
     add_box(ax, (0.12, 0.78), "Synthetic data\nand rule-derived labels", synthetic, 0.2, 0.16)
@@ -1556,7 +1557,7 @@ def plot_evaluation_architecture(output_path: Path) -> None:
     add_arrow(ax, (0.79, 0.45), (0.83, 0.45))
 
     add_box(ax, (0.4, 0.24), "Random Forest output\nadvisory comparison only", advisory, 0.23, 0.15)
-    add_box(ax, (0.65, 0.24), "Model-policy agreement\nand prediction metrics", external, 0.2, 0.15)
+    add_box(ax, (0.65, 0.24), "Model-policy agreement\nand prediction metrics", metrics, 0.2, 0.15)
     add_arrow(ax, (0.66, 0.69), (0.47, 0.32), color="#a16207", linestyle="--")
     add_arrow(ax, (0.515, 0.24), (0.55, 0.24), color="#a16207", linestyle="--")
     add_arrow(ax, (0.69, 0.37), (0.67, 0.32), color="#a16207", linestyle="--")
@@ -1564,16 +1565,6 @@ def plot_evaluation_architecture(output_path: Path) -> None:
     add_box(ax, (0.14, 0.24), "Critical / invalid input:\nsafe mode; hold last command", safe, 0.23, 0.15)
     add_arrow(ax, (0.12, 0.36), (0.14, 0.33), color="#b91c1c")
 
-    add_box(ax, (0.89, 0.18), "External sensor/relay logs\nread-only exploratory audit", "#f1f5f9", 0.18, 0.15)
-    ax.text(
-        0.89,
-        0.055,
-        "Not used for model training or validation:\nfeature and provenance details are unverified",
-        ha="center",
-        va="center",
-        fontsize=8,
-        color="#475569",
-    )
     ax.text(
         0.5,
         0.02,
@@ -1694,14 +1685,22 @@ def plot_external_audit(audit_dir: Path, output_path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--chapter2-output-dir", type=Path, default=DEFAULT_CHAPTER2_OUTPUT_DIR
+    )
     parser.add_argument("--audit-dir", type=Path, default=DEFAULT_AUDIT_DIR)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.chapter2_output_dir.mkdir(parents=True, exist_ok=True)
     plot_evaluation_architecture(
         args.output_dir / "Figure_3_7_evaluation_architecture.png"
     )
-    plot_external_audit(args.audit_dir, args.output_dir / "Figure_3_8_external_data_audit.png")
-    print(f"Supplementary Chapter 3 figures written to {args.output_dir}")
+    plot_external_audit(
+        args.audit_dir,
+        args.chapter2_output_dir / "Figure_2_1_external_data_audit.png",
+    )
+    print(f"Supplementary Chapter 3 figure written to {args.output_dir}")
+    print(f"Chapter 2 audit figure written to {args.chapter2_output_dir}")
 
 
 if __name__ == "__main__":
@@ -3387,6 +3386,12 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+### B.3 External Forecast Results and Interpretation
+
+The one-day-ahead benchmark used exact one-, two-, and seven-day lag values with annual day-of-year features and chronological test partitions within two Trentino consortiums. On 1,336 pooled test records, one-day persistence achieved MAE 0.321 and RMSE 0.927, compared with XGBoost MAE 0.393 and RMSE 0.973. Results differed by cohort: XGBoost had lower RMSE but higher MAE than persistence in consortium 0, and higher MAE and RMSE in consortium 2. Pooled R-squared is omitted because cohort-level measurement differences can make it misleading.
+
+This is preliminary evidence that soil-moisture forecasting can be evaluated as a separate task, not evidence that a forecasting model can replace rule-derived gate labels or control an AWD gate. Once reliable local sensor histories and verified gate states are available, forecasting could be investigated as a possible complement or alternative to rule-derived decisions, with appropriate feature definitions and an independent evaluation. The Trentino results do not establish transfer to Philippine rice paddies or show that replacement is feasible or safe. The dataset card lists CC BY-NC-ND 4.0; review its terms and institutional guidance before distributing derived results.
 
 ## Appendix C. Automated Test Scripts
 
